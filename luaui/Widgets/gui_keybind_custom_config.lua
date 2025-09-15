@@ -1,16 +1,19 @@
 ---@class Widget
----@field DrawScreen function
----@field MouseWheel function
----@field MousePress function
----@field KeyPress function
----@field TextInput function
+---@field GetInfo function
 ---@field Initialize function
 ---@field Shutdown function
 ---@field ViewResize function
+---@field DrawScreen function
+---@field MouseMove function
+---@field MousePress function
+---@field MouseWheel function
+---@field KeyPress function
+---@field TextInput function
+---@field IsAbove function
+---@field Toggle function
 ---@field GetConfigData function
 ---@field SetConfigData function
----@field IsAbove function
-local widget = widget ---@type Widget
+local widget = widget
 
 function widget:GetInfo()
     return {
@@ -22,6 +25,329 @@ function widget:GetInfo()
         layer = -99999,
         enabled = false,
     }
+end
+
+-- Forward declarations for dropdowns
+local keySelector
+local commandSelector
+
+-- Constants
+local BUTTON_HEIGHT = 24
+local INPUT_HEIGHT = 24
+local PADDING = 8
+local FONT_SIZE = 14
+local HEADER_SIZE = 18
+local SCROLL_HEIGHT = 480  -- Will be updated based on window height
+
+-- Colors
+local colors = {
+    windowBackground = {0, 0, 0, math.max(0.75, Spring.GetConfigFloat("ui_opacity", 0.7))},
+    buttonBackground = {0.15, 0.15, 0.15, 1},
+    buttonHover = {0.25, 0.25, 0.25, 1}, 
+    buttonActive = {0.3, 0.3, 0.3, 1},
+    text = {1, 1, 1, 1},
+    input = {0.12, 0.12, 0.12, 1},
+    inputActive = {0.2, 0.2, 0.2, 1},
+    removeButton = {0.7, 0.2, 0.2, 0.8},
+    removeButtonHover = {0.8, 0.3, 0.3, 0.9}
+}
+
+-- Helper functions
+local math_isInRect = math.isInRect
+
+local function WidgetPCall(func, callback, ...)
+    local success, result = pcall(func, ...)
+    if not success then
+        print("Error:", result) -- result will contain the error message
+        Spring.Echo("Error:", result)
+    end
+    if callback then
+        callback()
+    end
+end
+
+-- Mouse state
+local mx, my = 0, 0
+function widget:MouseMove(x, y, dx, dy, button)
+    mx, my = x, y
+end
+
+-- Classes
+local KeySelector = {}
+KeySelector.__index = KeySelector
+
+function KeySelector.new(options)
+    local self = setmetatable({}, KeySelector)
+    self.selectedValue = options.initialValue or "New Key"
+    self.isActive = false
+    self.x = 0
+    self.y = 0
+    self.width = 0
+    self.height = 0
+    self.options = options.options or {}
+    self.onChange = options.onChange
+    self.isCapturing = false
+    
+    local font = WG['fonts'].getFont()
+
+    function KeySelector:setDimensions(x, y, width, height)
+        self.x = x
+        self.y = y
+        self.width = width
+        self.height = height
+    end
+    
+    function KeySelector:draw()
+        -- Draw main button
+        UiButton(
+            self.x,
+            self.y,
+            self.x + self.width,
+            self.y + self.height,
+            1,1,1,1, 1,1,1,1, nil,
+            self.isActive and colors.buttonActive or colors.buttonBackground
+        )
+        
+        -- Draw selected text
+        font:Begin()
+        font:SetTextColor(1,1,1,1)
+        font:Print(self.selectedValue,
+            self.x + elementPadding * 2,
+            self.y + elementPadding,
+            FONT_SIZE, "n"
+        )
+    end
+    
+    function KeySelector:handleMousePress(x, y)
+        if math_isInRect(x, y, self.x, self.y, self.x + self.width, self.y + self.height) then
+            if not self.isActive and not self.isCapturing then
+                self:startCapture()
+                return true
+            end
+            self.isActive = not self.isActive
+            return true
+        end
+        
+        if self.isActive then
+            local dropdownY = self.y + self.height
+            local itemHeight = self.height - elementPadding
+            
+            for i, option in ipairs(self.options) do
+                local optionY = dropdownY + ((i-1) * itemHeight)
+                if math_isInRect(x, y,
+                    self.x,
+                    optionY, 
+                    self.x + self.width,
+                    optionY + itemHeight
+                ) then
+                    self.selectedValue = option
+                    if self.onChange then self.onChange(option) end
+                    self.isActive = false
+                    return true
+                end
+            end
+        end
+        self.isActive = false
+        return false
+    end
+    
+    function KeySelector:startCapture()
+        self.isCapturing = true
+        self.selectedValue = "Press a key..."
+    end
+    
+    function KeySelector:handleKeyCapture(key, mods)
+        if not self.isCapturing then return false end
+        
+        local modstring = ""
+        if Spring.GetModKeyState() then
+            local alt, ctrl, meta, shift = Spring.GetModKeyState()
+            if alt then modstring = modstring .. "Alt+" end
+            if ctrl then modstring = modstring .. "Ctrl+" end
+            if shift then modstring = modstring .. "Shift+" end
+        end
+        
+        local keySymbol = Spring.GetKeySymbol(key)
+        if keySymbol then
+            self.selectedValue = modstring .. keySymbol
+            self.isCapturing = false
+            if self.onChange then self.onChange(self.selectedValue) end
+            return true
+        end
+        return false
+    end
+
+    return self
+end
+
+local CommandSelector = {}
+CommandSelector.__index = CommandSelector
+
+function CommandSelector.new(options)
+    local self = setmetatable({}, CommandSelector)
+    self.selectedValue = options.initialValue or "New Command"
+    self.isActive = false
+    self.x = 0
+    self.y = 0
+    self.width = 0
+    self.height = 0
+    self.options = options.options or {}
+    self.onChange = options.onChange
+    self.filter = ""
+    
+    local font = WG['fonts'].getFont()
+
+    function CommandSelector:setDimensions(x, y, width, height)
+        self.x = x
+        self.y = y
+        self.width = width
+        self.height = height
+    end
+
+    function CommandSelector:updateFilteredOptions()
+        if self.filter == "" then
+            return self.options
+        end
+        
+        local filtered = {}
+        for _, cmd in ipairs(self.options) do
+            if cmd:lower():find(self.filter:lower(), 1, true) then
+                table.insert(filtered, cmd)
+            end
+        end
+        return filtered
+    end
+
+    function CommandSelector:draw()
+        -- Draw main button
+        UiButton(
+            self.x,
+            self.y,
+            self.x + self.width,
+            self.y + self.height,
+            1,1,1,1, 1,1,1,1, nil,
+            self.isActive and colors.buttonActive or colors.buttonBackground
+        )
+        
+        -- Draw selected text/filter
+        font:Begin()
+        font:SetTextColor(1,1,1,1)
+        font:Print(self.isActive and self.filter or self.selectedValue,
+            self.x + elementPadding * 2,
+            self.y + elementPadding,
+            FONT_SIZE, "n"
+        )
+        
+        -- Draw dropdown arrow
+        local arrowSize = FONT_SIZE
+        local arrowX = self.x + self.width - elementPadding * 3 - arrowSize
+        local arrowY = self.y + elementPadding
+        font:Print("▼", arrowX, arrowY, arrowSize, "n")
+        font:End()
+        
+        -- Draw dropdown if active
+        if self.isActive then
+            local filteredOptions = self:updateFilteredOptions()
+            local dropdownY = self.y + self.height
+            local itemHeight = self.height - elementPadding
+            local maxItems = math.min(10, #filteredOptions)
+            
+            UiSelector(
+                self.x,
+                dropdownY,
+                self.x + self.width,
+                dropdownY + (maxItems * itemHeight)
+            )
+            
+            font:Begin()
+            for i = 1, maxItems do
+                local option = filteredOptions[i]
+                local optionY = dropdownY + ((i-1) * itemHeight)
+                
+                if math_isInRect(mx, my, 
+                    self.x,
+                    optionY,
+                    self.x + self.width,
+                    optionY + itemHeight
+                ) then
+                    UiSelectHighlight(
+                        self.x,
+                        optionY,
+                        self.x + self.width,
+                        optionY + itemHeight
+                    )
+                end
+                
+                font:Print(option,
+                    self.x + elementPadding * 2,
+                    optionY + elementPadding,
+                    FONT_SIZE, "n"
+                )
+            end
+            font:End()
+        end
+    end
+
+    function CommandSelector:handleMousePress(x, y)
+        if math_isInRect(x, y, self.x, self.y, self.x + self.width, self.y + self.height) then
+            self.isActive = not self.isActive
+            if self.isActive then self.filter = "" end
+            return true
+        end
+        
+        if self.isActive then
+            local filteredOptions = self:updateFilteredOptions()
+            local dropdownY = self.y + self.height
+            local itemHeight = self.height - elementPadding
+            local maxItems = math.min(10, #filteredOptions)
+            
+            for i = 1, maxItems do
+                local optionY = dropdownY + ((i-1) * itemHeight)
+                if math_isInRect(x, y,
+                    self.x,
+                    optionY,
+                    self.x + self.width,
+                    optionY + itemHeight
+                ) then
+                    self.selectedValue = filteredOptions[i]
+                    if self.onChange then self.onChange(self.selectedValue) end
+                    self.isActive = false
+                    return true
+                end
+            end
+        end
+        self.isActive = false
+        return false
+    end
+
+    function CommandSelector:handleTextInput(char)
+        if not self.isActive then return false end
+        
+        self.filter = self.filter .. char
+        return true
+    end
+
+    function CommandSelector:handleKeyPress(key)
+        if not self.isActive then return false end
+        
+        if key == 8 then -- Backspace
+            if #self.filter > 0 then
+                self.filter = self.filter:sub(1, -2)
+            end
+            return true
+        elseif key == 13 then -- Enter
+            local filteredOptions = self:updateFilteredOptions()
+            if #filteredOptions > 0 then
+                self.selectedValue = filteredOptions[1]
+                if self.onChange then self.onChange(self.selectedValue) end
+                self.isActive = false
+            end
+            return true
+        end
+        return false
+    end
+
+    return self
 end
 
 -- State
@@ -53,27 +379,6 @@ local showSuggestions = false
 local suggestions = {}
 local selectedSuggestion = 1
 local MAX_SUGGESTIONS = 5
-
--- Constants
-local BUTTON_HEIGHT = 24
-local INPUT_HEIGHT = 24
-local PADDING = 8
-local SCROLL_HEIGHT = window.height - 120
-local FONT_SIZE = 14
-local HEADER_SIZE = 18
-
--- Colors
-local colors = {
-    windowBackground = {0.1, 0.1, 0.1, 0.8},
-    buttonBackground = {0.2, 0.2, 0.2, 1},
-    buttonHover = {0.3, 0.3, 0.3, 1},
-    buttonActive = {0.4, 0.4, 0.4, 1},
-    text = {1, 1, 1, 1},
-    input = {0.15, 0.15, 0.15, 1},
-    inputActive = {0.25, 0.25, 0.25, 1},
-    removeButton = {0.7, 0.3, 0.3, 1},
-    removeButtonHover = {0.8, 0.4, 0.4, 1}
-}
 
 local RectRound
 local font
@@ -112,6 +417,21 @@ local function LoadHotkeyConfigs()
             availableKeys[modifier .. key] = true
         end
     end
+    
+    -- Update dropdown options
+    local keyOptions = {}
+    for key in pairs(availableKeys) do
+        table.insert(keyOptions, key)
+    end
+    table.sort(keyOptions)
+    keySelector.options = keyOptions
+    
+    local cmdOptions = {}
+    for cmd in pairs(availableCommands) do
+        table.insert(cmdOptions, cmd)
+    end
+    table.sort(cmdOptions)
+    commandSelector.options = cmdOptions
 end
 
 local function LoadCurrentBindings()
@@ -207,40 +527,8 @@ local function DrawBindingsList()
 end
 
 local function DrawInputs()
-    -- Key input field
-    UiElement(
-        window.x + elementPadding, 
-        window.y + elementPadding + INPUT_HEIGHT + elementPadding,
-        window.x + window.width/2 - elementPadding, 
-        window.y + elementPadding + INPUT_HEIGHT*2 + elementPadding,
-        0,0,0,0,
-        1
-    )
-    
-    -- Command input field
-    UiElement(
-        window.x + window.width/2 + elementPadding,
-        window.y + elementPadding + INPUT_HEIGHT + elementPadding,
-        window.x + window.width - elementPadding - 60,
-        window.y + elementPadding + INPUT_HEIGHT*2 + elementPadding,
-        0,0,0,0,
-        1
-    )
-    
-    font:Begin()
-    font:SetTextColor(1,1,1,1)
-    font:SetOutlineColor(0,0,0,0.4)
-    font:Print(keyInput,
-        window.x + 2*elementPadding,
-        window.y + elementPadding + INPUT_HEIGHT + 2*elementPadding,
-        FONT_SIZE, "n"
-    )
-    font:Print(commandInput,
-        window.x + window.width/2 + 2*elementPadding,
-        window.y + elementPadding + INPUT_HEIGHT + 2*elementPadding,
-        FONT_SIZE, "n"
-    )
-    font:End()
+    keySelector:draw()
+    commandSelector:draw()
     
     -- Add button
     UiButton(
@@ -290,25 +578,27 @@ end
 
 function widget:DrawScreen()
     if not show then return end
-    
     if not font then return end
     
     gl.PushMatrix()
-    
-    DrawBackground()
-    
-    -- Draw title
-    gl.Color(colors.text)
-		font:Begin()
-    font:Print("Keybinding Configuration", window.x + PADDING, 
-              window.y + window.height - HEADER_SIZE - PADDING, HEADER_SIZE, "n")
-		font:End()
-    
-    DrawBindingsList()
-    DrawInputs()
-    DrawSuggestions()
-    
-    gl.PopMatrix()
+
+    WidgetPCall(function()
+        DrawBackground()
+        
+        -- Draw title
+        gl.Color(colors.text)
+        font:Begin()
+        font:Print("Keybinding Configuration", window.x + PADDING, 
+                window.y + window.height - HEADER_SIZE - PADDING, HEADER_SIZE, "n")
+        font:End()
+        
+        DrawBindingsList()
+        DrawInputs()
+        DrawSuggestions()
+        
+    end, function()
+        gl.PopMatrix()
+    end)
 end
 
 function widget:MouseWheel(up, value)
@@ -327,102 +617,78 @@ function widget:MousePress(x, y, button)
     if not show then return false end
     
     -- Check if clicked on the add button
-    if x > window.x + window.width - PADDING - 50 and x < window.x + window.width - PADDING and
-       y > window.y + PADDING + INPUT_HEIGHT + PADDING and y < window.y + PADDING + INPUT_HEIGHT*2 + PADDING then
+    if x > window.x + window.width - elementPadding - 50 and x < window.x + window.width - elementPadding and
+       y > window.y + elementPadding + INPUT_HEIGHT + elementPadding and y < window.y + elementPadding + INPUT_HEIGHT*2 + elementPadding then
         SaveBinding(keyInput, commandInput)
-        keyInput = "New Key"
-        commandInput = "New Command"
+        keySelector.selectedValue = "New Key"
+        commandSelector.selectedValue = "New Command"
+        return true
+    end
+    
+    -- Handle dropdown clicks
+    if keySelector:handleMousePress(x, y) then
+        commandSelector.isActive = false
+        return true
+    end
+    
+    if commandSelector:handleMousePress(x, y) then
+        keySelector.isActive = false
         return true
     end
     
     -- Check if clicked on a remove button
-    local relativeY = window.height - (y - window.y) - HEADER_SIZE - 2*PADDING + scrollOffset
-    local index = math.floor(relativeY / (BUTTON_HEIGHT + PADDING)) + 1
+    local relativeY = window.height - (y - window.y) - HEADER_SIZE - 2*elementPadding + scrollOffset
+    local index = math.floor(relativeY / (BUTTON_HEIGHT + elementPadding)) + 1
     if index > 0 and index <= #currentBindings and
-       x > window.x + window.width - 2*PADDING - 50 and x < window.x + window.width - 2*PADDING then
+       x > window.x + window.width - 2*elementPadding - 50 and x < window.x + window.width - 2*elementPadding then
         RemoveBinding(currentBindings[index].key, currentBindings[index].command)
         return true
     end
     
-    -- Check if clicked in key input
-    if x > window.x + PADDING and x < window.x + window.width/2 - PADDING and
-       y > window.y + PADDING + INPUT_HEIGHT + PADDING and y < window.y + PADDING + INPUT_HEIGHT*2 + PADDING then
-        isCapturingKeys = true
-        keyInput = "Press a key..."
-        return true
-    end
-    
-    -- Check if clicked in command input
-    if x > window.x + window.width/2 + PADDING and x < window.x + window.width - PADDING - 60 and
-       y > window.y + PADDING + INPUT_HEIGHT + PADDING and y < window.y + PADDING + INPUT_HEIGHT*2 + PADDING then
-        isCapturingKeys = false
-        return true
-    end
-    
+    -- Close dropdowns when clicking elsewhere
+    keySelector.isActive = false
+    commandSelector.isActive = false
     return false
 end
 
 function widget:KeyPress(key, mods, isRepeat, label)
     if not show then return false end
     
-    -- Handle escape key to close the window
-    if key == 27 and show == true then -- Esc
-        widget:Toggle()
-    end
-    
-    if isCapturingKeys then
-        local modstring = ""
-        if Spring.GetModKeyState() then
-            local alt, ctrl, meta, shift = Spring.GetModKeyState()
-            if alt then modstring = modstring .. "Alt+" end
-            if ctrl then modstring = modstring .. "Ctrl+" end
-            if shift then modstring = modstring .. "Shift+" end
-        end
-        
-        local keyname = Spring.GetKeySymbol(key)
-        if keyname then
-            keyInput = modstring .. keyname
-            isCapturingKeys = false
+    if key == 27 then -- Escape
+        if keySelector.isCapturing then
+            keySelector.isCapturing = false
+            keySelector.selectedValue = "New Key"
             return true
         end
-    else
-        -- Handle command suggestions navigation
-        if showSuggestions then
-            if key == 273 then -- Up arrow
-                selectedSuggestion = math.max(1, selectedSuggestion - 1)
-                return true
-            elseif key == 274 then -- Down arrow
-                selectedSuggestion = math.min(#suggestions, selectedSuggestion + 1)
-                return true
-            elseif key == 13 then -- Enter
-                if suggestions[selectedSuggestion] then
-                    commandInput = suggestions[selectedSuggestion]
-                    showSuggestions = false
-                    return true
-                end
-            end
+        if keySelector.isActive or commandSelector.isActive then
+            keySelector.isActive = false
+            commandSelector.isActive = false
+            return true
         end
-        
-        if key == 8 then -- Backspace
-            if commandInput ~= "" then
-                commandInput = commandInput:sub(1, -2)
-                UpdateSuggestions()
-                return true
-            end
-        end
+        widget:Toggle()
+        return true
+    end
+    
+    -- Handle key capture for key selector
+    if keySelector.isCapturing then
+        return keySelector:handleKeyCapture(key, mods)
+    end
+    
+    -- Handle command selector input
+    if commandSelector.isActive then
+        return commandSelector:handleKeyPress(key)
     end
     
     return false
 end
 
-function widget:TextInput(utf8char)
-    if not show or isCapturingKeys then return false end
+function widget:TextInput(char)
+    if not show then return false end
     
-    if utf8char then
-        commandInput = commandInput .. utf8char
-        UpdateSuggestions()
-        return true
+    if commandSelector.isActive then
+        return commandSelector:handleTextInput(char)
     end
+    
     return false
 end
 
@@ -454,43 +720,67 @@ local function InitializeUI()
     elementCorner = WG.FlowUI.elementCorner 
     elementPadding = WG.FlowUI.elementPadding
 
-    RectRound = WG.FlowUI.Draw.RectRound
-    UiElement = WG.FlowUI.Draw.Element
-    UiButton = WG.FlowUI.Draw.Button
+	RectRound = WG.FlowUI.Draw.RectRound
+	UiElement = WG.FlowUI.Draw.Element
+	UiButton = WG.FlowUI.Draw.Button
+	UiSlider = WG.FlowUI.Draw.Slider
+	UiSliderKnob = WG.FlowUI.Draw.SliderKnob
+	UiToggle = WG.FlowUI.Draw.Toggle
+	UiSelector = WG.FlowUI.Draw.Selector
+	UiSelectHighlight = WG.FlowUI.Draw.SelectHighlight
 
-    -- Update colors to match FlowUI
-    colors = {
-        windowBackground = {0, 0, 0, math.max(0.75, Spring.GetConfigFloat("ui_opacity", 0.7))},
-        buttonBackground = {0.15, 0.15, 0.15, 1},
-        buttonHover = {0.25, 0.25, 0.25, 1}, 
-        buttonActive = {0.3, 0.3, 0.3, 1},
-        text = {1, 1, 1, 1},
-        input = {0.12, 0.12, 0.12, 1},
-        inputActive = {0.2, 0.2, 0.2, 1},
-        removeButton = {0.7, 0.2, 0.2, 0.8},
-        removeButtonHover = {0.8, 0.3, 0.3, 0.9}
-    }
-
-    -- Use FlowUI font
+    -- Font
     font = WG['fonts'].getFont()
+    
+    -- Dropdowns
+    keySelector = KeySelector.new({
+        initialValue = "New Key",
+        options = {},  -- Will be populated from availableKeys
+        onChange = function(value)
+            keyInput = value
+        end
+    })
+    keySelector:setDimensions(
+        window.x + elementPadding,
+        window.y + elementPadding + INPUT_HEIGHT + elementPadding,
+        window.width/2 - 2*elementPadding,
+        INPUT_HEIGHT
+    )
+
+    commandSelector = CommandSelector.new({
+        initialValue = "New Command",
+        options = {},  -- Will be populated from availableCommands
+        onChange = function(value)
+            commandInput = value
+            showSuggestions = false
+        end
+    })
+    commandSelector:setDimensions(
+        window.x + window.width/2 + elementPadding,
+        window.y + elementPadding + INPUT_HEIGHT + elementPadding,
+        window.width/2 - elementPadding - 60,
+        INPUT_HEIGHT
+    )
 end
 
 function widget:Initialize()
-    InitializeUI()
+    WidgetPCall(function()
+        InitializeUI()
+        
+        -- Register toggle hotkey
+        Spring.SendCommands({"bind f9 luaui keybind_custom_config_toggle"})
+        --Spring.Echo("Press F9 to toggle keybinding configuration")
+        
+        -- Add command handler
+        widgetHandler:AddAction("keybind_custom_config_toggle", function()
+            widget:Toggle()
+        end, nil, "t")
+        
+        LoadHotkeyConfigs()
+        LoadCurrentBindings()
     
-    -- Register toggle hotkey
-    Spring.SendCommands({"bind f9 luaui keybind_custom_config_toggle"})
-    --Spring.Echo("Press F9 to toggle keybinding configuration")
-    
-    -- Add command handler
-    widgetHandler:AddAction("keybind_custom_config_toggle", function()
-        widget:Toggle()
-    end, nil, "t")
-    
-    LoadHotkeyConfigs()
-    LoadCurrentBindings()
-
-		WG['keybind_custom_config'] = widget
+        WG['keybind_custom_config'] = widget
+    end)
 end
 
 function widget:ViewResize()
@@ -517,7 +807,7 @@ function widget:Shutdown()
         end
         gl.DeleteList(backgroundGuishader)
     end
-    end
+end
 
 function widget:GetConfigData()
     return {
