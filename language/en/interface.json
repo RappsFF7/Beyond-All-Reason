@@ -1349,6 +1349,8 @@
 				"keylayout_descr": "Set the keyboard layout",
 				"keybindings": "Keybind Preset",
 				"keybindings_descr": "Set the keybind preset. Buildmenu will automatically change to match preset, unless custom is chosen",
+				"keybindings_customconfigure": "Keybind Custom Config",
+				"keybindings_customconfigure_descr": "Set the key bindings for the custom Keybind Preset",
 				"buildmenu": "Build menu",
 				"buildmenu_bottom": "bottom position",
 				"buildmenu_bottom_descr": "Relocate the buildmenu to the bottom of the screen",
@@ -1776,5 +1778,17 @@
 			"noTarget": "No target selected",
 			"shareTo": "Share to: %{playerColor}%{player}"
 		}
+	},
+	"keybindConfig": {
+		"title": "Keybinding Configuration",
+		"currentBindings": "Current Bindings:",
+		"addNewBinding": "Add New Binding:",
+		"keyInputHint": "Enter key (e.g. Alt+sc_a)",
+		"keyInputTooltip": "Keys can have modifiers like: Alt+, Ctrl+, Shift+\nExample: Alt+sc_a or Ctrl+Shift+numpad1",
+		"commandInputHint": "Enter command",
+		"commandInputTooltip": "Enter a command like: attack, stop, fight, patrol\nCommands can have parameters after them",
+		"add": "Add",
+		"remove": "Remove",
+		"close": "Close"
 	}
 }

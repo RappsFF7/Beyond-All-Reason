@@ -3006,6 +3006,15 @@ function init()
 			  init()
 		  end,
 		},
+		{ id = "keybindings_customconfigure", group = "control", category = types.advanced, name = Spring.I18N('ui.settings.option.keybindings_customconfigure'), type = "bool", value = true, description = Spring.I18N('ui.settings.option.keybindings_customconfigure_descr'),
+		  onchange = function(_, value)
+				if value then
+					widgetHandler:EnableWidget('Keybind Custom Config')
+				else
+					widgetHandler:DisableWidget('Keybind Custom Config')
+				end
+		  end,
+		},
 
 		{ id = "gridmenu", group = "control", category = types.basic, name = Spring.I18N('ui.settings.option.gridmenu'), type = "bool", value = GetWidgetToggleValue("Grid menu"), description = Spring.I18N('ui.settings.option.gridmenu_descr'),
 		  onchange = function(i, value)
