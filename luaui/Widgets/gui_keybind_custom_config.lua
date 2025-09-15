@@ -77,11 +77,79 @@ function widget:MouseMove(x, y, dx, dy, button)
 end
 
 -- Classes
+local UiButtonInteractable = {}
+UiButtonInteractable.__index = UiButtonInteractable
+
+--[[
+    px, py, sx, sy,  tl, tr, br, bl,  ptl, ptr, pbr, pbl,  opacity, color1, color2, bgpadding, glossMult,
+    text
+]]--
+function UiButtonInteractable.new(options)
+    local self = setmetatable(options, UiButtonInteractable)
+
+    self.state = ''
+
+    local onClickCallback
+    
+    function UiButtonInteractable:draw()
+        -- Draw button
+        UiButton(
+            self.x,
+            self.y,
+            self.x + self.width,
+            self.y + self.height,
+            1,1,1,1, 1,1,1,1, nil,
+            self.state == 'active' and colors.buttonActive or colors.buttonBackground
+        )
+        
+        -- Draw text
+        font:Begin()
+        font:SetTextColor(1,1,1,1)
+        font:Print(self.text,
+            self.x,
+            self.y,
+            FONT_SIZE, "n"
+        )
+    end
+
+    function UiButtonInteractable:handleMouseMove(x, y, dx, dy, button)
+        if math_isInRect(x, y, self.x, self.y, self.x + self.width, self.y + self.height) then
+            self.state = 'hover'
+        else
+            if self.state == 'hover' then
+                self.state = ''
+            end
+        end
+    end
+    
+    function UiButtonInteractable:handleMouseClick(x, y, button)
+        if math_isInRect(x, y, self.x, self.y, self.x + self.width, self.y + self.height) then
+            self.state = 'active'
+            if onClickCallback then
+                onClickCallback()
+            end
+        end
+    end
+
+    function UiButtonInteractable:handleMouseRelease(x, y, button)
+        if not math_isInRect(x, y, self.x, self.y, self.x + self.width, self.y + self.height) then
+            self.state = ''
+        end
+    end
+
+    function UiButtonInteractable:onClick(func)
+        onClickCallback = func
+    end
+
+    return self
+end
+
 local KeySelector = {}
 KeySelector.__index = KeySelector
 
 function KeySelector.new(options)
     local self = setmetatable({}, KeySelector)
+
     self.selectedValue = options.initialValue or "New Key"
     self.isActive = false
     self.x = 0
