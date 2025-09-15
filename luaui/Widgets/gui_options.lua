@@ -3006,12 +3006,11 @@ function init()
 			  init()
 		  end,
 		},
-		{ id = "keybindings_customconfigure", group = "control", category = types.advanced, name = Spring.I18N('ui.settings.option.keybindings_customconfigure'), type = "bool", value = true, description = Spring.I18N('ui.settings.option.keybindings_customconfigure_descr'),
-		  onchange = function(_, value)
-				if value then
-					widgetHandler:EnableWidget('Keybind Custom Config')
-				else
-					widgetHandler:DisableWidget('Keybind Custom Config')
+		{ id = "keybindings_customconfigure", group = "control", category = types.basic, name = Spring.I18N('ui.settings.option.keybindings_customconfigure'), type = "click", description = Spring.I18N('ui.settings.option.keybindings_customconfigure_descr'),
+			onclick = function()
+				if WG['keybind_custom_config'] then
+					WG['keybind_custom_config'].Toggle()
+					WG['options'].toggle()
 				end
 		  end,
 		},
