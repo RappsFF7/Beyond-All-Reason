@@ -55,11 +55,15 @@ local colors = {
 -- Helper functions
 local math_isInRect = math.isInRect
 
+local function log(...)
+    print(...)
+    Spring.Echo(...)
+end
+
 local function WidgetPCall(func, callback, ...)
     local success, result = pcall(func, ...)
     if not success then
-        print("Error:", result) -- result will contain the error message
-        Spring.Echo("Error:", result)
+        log("Error:", result) -- result will contain the error message
     end
     if callback then
         callback()
@@ -350,6 +354,111 @@ function CommandSelector.new(options)
     return self
 end
 
+-- Create BindingList class after the dropdown classes
+local BindingList = {}
+BindingList.__index = BindingList
+
+function BindingList.new(options)
+    local self = setmetatable({}, BindingList)
+    self.x = 0
+    self.y = 0
+    self.width = 0
+    self.height = 0
+    self.scrollOffset = 0
+    self.minScrollOffset = 0
+    self.maxScrollOffset = 0
+    self.removeHover = -1
+    self.bindings = {}
+    self.onRemove = options.onRemove
+    
+    local font = WG['fonts'].getFont()
+
+    function BindingList:setDimensions(x, y, width, height)
+        self.x = x
+        self.y = y
+        self.width = width
+        self.height = height
+    end
+    
+    function BindingList:setBindings(bindings)
+        self.bindings = bindings
+        self.maxScrollOffset = math.max(self.minScrollOffset, (#bindings * (BUTTON_HEIGHT + elementPadding)) - SCROLL_HEIGHT)
+    end
+    
+    function BindingList:draw()
+        gl.PushMatrix()
+        gl.Translate(self.x, self.y + self.height, 0)
+        gl.Scissor(self.x, self.y, self.width, self.height)
+    
+        for i, binding in ipairs(self.bindings) do
+            local yPos = -((i-1) * (BUTTON_HEIGHT + elementPadding)) + self.scrollOffset
+            
+            if yPos > -SCROLL_HEIGHT and yPos < BUTTON_HEIGHT then
+                -- Draw binding row
+                UiElement(0, yPos, self.width - 60, yPos + BUTTON_HEIGHT, 0,0,0,0, 1)
+                
+                -- Draw text
+                font:Begin()
+                font:SetTextColor(1,1,1,1)
+                font:SetOutlineColor(0,0,0,0.4)
+                font:Print(binding.boundWith or "", elementPadding, yPos + elementPadding, FONT_SIZE, "n")
+                font:Print(binding.command or "", self.width * (1/3), yPos + elementPadding, FONT_SIZE, "n")
+                font:Print(binding.extra or "", self.width * (2/3), yPos + elementPadding, FONT_SIZE, "n")
+                font:End()
+                
+                -- Draw remove button
+                UiButton(
+                    self.width - 50, 
+                    yPos, 
+                    self.width, 
+                    yPos + BUTTON_HEIGHT,
+                    self.removeHover == i and colors.removeButtonHover or colors.removeButton
+                )
+                
+                font:Begin()
+                font:SetTextColor(1,1,1,1)
+                font:Print("Del", self.width - 45, yPos + elementPadding, FONT_SIZE, "n")
+                font:End()
+            end
+        end
+        
+        gl.Scissor(false)
+        gl.PopMatrix()
+    end
+    
+    function BindingList:handleMouseWheel(up, value)
+        local mouseX, mouseY = Spring.GetMouseState()
+
+        if math_isInRect(mouseX, mouseY, self.x, self.y, self.x + self.width, self.y + self.height) then
+            local newOffset = self.scrollOffset - value * 50
+            self.scrollOffset = math.max(self.minScrollOffset, math.min(self.maxScrollOffset, newOffset))
+            return true
+        end
+
+        return false
+    end
+    
+    function BindingList:handleMousePress(x, y)
+        -- Translate coordinates to binding list space
+        local localX = x - self.x
+        local localY = y - self.y
+        
+        -- Check if clicked on a remove button
+        local relativeY = -localY + self.scrollOffset
+        local index = math.floor(relativeY / (BUTTON_HEIGHT + elementPadding)) + 1
+        if index > 0 and index <= #self.bindings and
+           localX > self.width - 50 and localX < self.width then
+            if self.onRemove then 
+                self.onRemove(self.bindings[index].boundWith, self.bindings[index].command)
+            end
+            return true
+        end
+        return false
+    end
+
+    return self
+end
+
 -- State
 local vsx, vsy = Spring.GetViewGeometry()
 local show = false
@@ -364,24 +473,15 @@ window.y = math.floor((vsy * centerPosY) - (window.height / 2))
 
 -- UI Elements state
 local backgroundGuishader
+local bindingList
 local currentBindings = {}
 local keyInput = "New Key"
 local commandInput = "New Command"
-local isCapturingKeys = false
-local scrollOffset = 0
-local minScrollOffset = -150
-local maxScrollOffset = 0
 local buttonHover = false
-local removeHover = -1
-
--- Command suggestions
 local showSuggestions = false
 local suggestions = {}
 local selectedSuggestion = 1
 local MAX_SUGGESTIONS = 5
-
-local RectRound
-local font
 
 -- Available commands and keys
 local availableCommands = {}
@@ -436,8 +536,9 @@ end
 
 local function LoadCurrentBindings()
     currentBindings = Spring.GetKeyBindings() or {}
-		Spring.Echo("currentBindings", currentBindings[0])
-    maxScrollOffset = math.max(minScrollOffset, (#currentBindings * (BUTTON_HEIGHT + PADDING)) - SCROLL_HEIGHT)
+    if bindingList then
+        bindingList:setBindings(currentBindings)
+    end
 end
 
 local function SaveBinding(key, command)
@@ -483,47 +584,6 @@ local function DrawBackground()
     end
     
     UiElement(window.x, window.y, window.x + window.width, window.y + window.height, 1,1,1,1, 1)
-end
-
-local function DrawBindingsList()
-    gl.PushMatrix()
-    gl.Translate(window.x + elementPadding, window.y + window.height - elementPadding - HEADER_SIZE - elementPadding, 0)
-    gl.Scissor(window.x + elementPadding, window.y + HEADER_SIZE + elementPadding, window.width - 2*elementPadding, SCROLL_HEIGHT)
-
-    for i, binding in ipairs(currentBindings) do
-        local yPos = -((i-1) * (BUTTON_HEIGHT + elementPadding)) + scrollOffset
-        
-        if yPos > -SCROLL_HEIGHT and yPos < BUTTON_HEIGHT then
-            -- Draw binding row
-            UiElement(0, yPos, window.width - 2*elementPadding - 60, yPos + BUTTON_HEIGHT, 0,0,0,0, 1)
-            
-            -- Draw text
-            font:Begin()
-            font:SetTextColor(1,1,1,1)
-            font:SetOutlineColor(0,0,0,0.4)
-            font:Print(binding.boundWith or "", elementPadding, yPos + elementPadding, FONT_SIZE, "n")
-            font:Print(binding.command or "", window.width * (1/3), yPos + elementPadding, FONT_SIZE, "n")
-            font:Print(binding.extra or "", window.width * (2/3), yPos + elementPadding, FONT_SIZE, "n")
-            font:End()
-            
-            -- Draw remove button
-            UiButton(
-                window.width - 2*elementPadding - 50, 
-                yPos, 
-                window.width - 2*elementPadding, 
-                yPos + BUTTON_HEIGHT,
-                removeHover == i and colors.removeButtonHover or colors.removeButton
-            )
-            
-            font:Begin()
-            font:SetTextColor(1,1,1,1)
-            font:Print("Del", window.width - 2*elementPadding - 45, yPos + elementPadding, FONT_SIZE, "n")
-            font:End()
-        end
-    end
-    
-    gl.Scissor(false)
-    gl.PopMatrix()
 end
 
 local function DrawInputs()
@@ -592,7 +652,7 @@ function widget:DrawScreen()
                 window.y + window.height - HEADER_SIZE - PADDING, HEADER_SIZE, "n")
         font:End()
         
-        DrawBindingsList()
+        bindingList:draw()
         DrawInputs()
         DrawSuggestions()
         
@@ -604,13 +664,7 @@ end
 function widget:MouseWheel(up, value)
     if not show then return false end
     
-    local mouseX, mouseY = Spring.GetMouseState()
-    if mouseX > window.x + PADDING and mouseX < window.x + window.width - PADDING and
-       mouseY > window.y + HEADER_SIZE + PADDING and mouseY < window.y + window.height - PADDING then
-        scrollOffset = math.max(minScrollOffset, math.min(maxScrollOffset, scrollOffset - value * 50))
-        return true
-    end
-    return false
+    return bindingList:handleMouseWheel(up, value)
 end
 
 function widget:MousePress(x, y, button)
@@ -636,12 +690,8 @@ function widget:MousePress(x, y, button)
         return true
     end
     
-    -- Check if clicked on a remove button
-    local relativeY = window.height - (y - window.y) - HEADER_SIZE - 2*elementPadding + scrollOffset
-    local index = math.floor(relativeY / (BUTTON_HEIGHT + elementPadding)) + 1
-    if index > 0 and index <= #currentBindings and
-       x > window.x + window.width - 2*elementPadding - 50 and x < window.x + window.width - 2*elementPadding then
-        RemoveBinding(currentBindings[index].key, currentBindings[index].command)
+    -- Handle binding list clicks
+    if bindingList:handleMousePress(x, y) then
         return true
     end
     
@@ -760,6 +810,17 @@ local function InitializeUI()
         window.y + elementPadding + INPUT_HEIGHT + elementPadding,
         window.width/2 - elementPadding - 60,
         INPUT_HEIGHT
+    )
+
+    -- Create binding list
+    bindingList = BindingList.new({
+        onRemove = RemoveBinding
+    })
+    bindingList:setDimensions(
+        window.x + elementPadding,
+        window.y + elementPadding + INPUT_HEIGHT + elementPadding + HEADER_SIZE + elementPadding,
+        window.width - 2*elementPadding,
+        SCROLL_HEIGHT
     )
 end
 
