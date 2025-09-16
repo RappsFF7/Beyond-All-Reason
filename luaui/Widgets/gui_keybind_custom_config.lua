@@ -170,28 +170,28 @@ function KeySelector.new(options)
         end
     end)
 
-    function KeySelector:setDimensions(x, y, width, height)
+    function self:setDimensions(x, y, width, height)
         button.px = x
         button.py = y
         button.sx = x + width
         button.sy = y + height
     end
     
-    function KeySelector:draw()
+    function self:draw()
         button:draw()
     end
     
-    function KeySelector:handleMousePress(x, y)
+    function self:handleMousePress(x, y)
         button:handleMousePress(x, y)
     end
     
-    function KeySelector:startCapture()
+    function self:startCapture()
         self.isCapturing = true
         self.selectedValue = "Press a key..."
         button.text = "Press a key..."
     end
     
-    function KeySelector:handleKeyCapture(key, mods)
+    function self:handleKeyCapture(key, mods)
         if not self.isCapturing then return false end
         
         local modstring = ""
@@ -244,7 +244,7 @@ function CommandSelector.new(options)
         if self.isActive then self.filter = "" end
     end)
 
-    function CommandSelector:setDimensions(x, y, width, height)
+    function self:setDimensions(x, y, width, height)
         self.x = x
         self.y = y
         self.width = width
@@ -255,7 +255,7 @@ function CommandSelector.new(options)
         button.sy = y + height
     end
 
-    function CommandSelector:updateFilteredOptions()
+    function self:updateFilteredOptions()
         if self.filter == "" then
             return self.options
         end
@@ -269,7 +269,7 @@ function CommandSelector.new(options)
         return filtered
     end
 
-    function CommandSelector:draw()
+    function self:draw()
         button.text = self.isActive and self.filter or self.selectedValue
         button:draw()
         
@@ -324,7 +324,7 @@ function CommandSelector.new(options)
         end
     end
 
-    function CommandSelector:handleMousePress(x, y)
+    function self:handleMousePress(x, y)
         local wasClicked = button:handleMousePress(x, y)
 
         if wasClicked then
@@ -356,14 +356,14 @@ function CommandSelector.new(options)
         return false
     end
 
-    function CommandSelector:handleTextInput(char)
+    function self:handleTextInput(char)
         if not self.isActive then return false end
         
         self.filter = self.filter .. char
         return true
     end
 
-    function CommandSelector:handleKeyPress(key)
+    function self:handleKeyPress(key)
         if not self.isActive then return false end
         
         if key == 8 then -- Backspace
@@ -405,19 +405,19 @@ function BindingList.new(options)
 
     local font = WG['fonts'].getFont()
 
-    function BindingList:setDimensions(x, y, width, height)
+    function self:setDimensions(x, y, width, height)
         self.x = x
         self.y = y
         self.width = width
         self.height = height
     end
     
-    function BindingList:setBindings(bindings)
+    function self:setBindings(bindings)
         self.bindings = bindings
         self.maxScrollOffset = math.max(self.minScrollOffset, (#bindings * (BUTTON_HEIGHT + elementPadding)) - SCROLL_HEIGHT)
     end
     
-    function BindingList:draw()
+    function self:draw()
         gl.PushMatrix()
         gl.Translate(self.x, self.y + self.height, 0)
         gl.Scissor(self.x, self.y, self.width, self.height)
@@ -458,7 +458,7 @@ function BindingList.new(options)
         gl.PopMatrix()
     end
     
-    function BindingList:handleMouseWheel(up, value)
+    function self:handleMouseWheel(up, value)
         local mouseX, mouseY = Spring.GetMouseState()
 
         if math_isInRect(mouseX, mouseY, self.x, self.y, self.x + self.width, self.y + self.height) then
@@ -470,7 +470,7 @@ function BindingList.new(options)
         return false
     end
     
-    function BindingList:handleMousePress(x, y)
+    function self:handleMousePress(x, y)
         -- Translate coordinates to binding list space
         local localX = x - self.x
         local localY = y - self.y
@@ -586,12 +586,6 @@ local function DrawBackground()
     UiElement(window.x, window.y, window.x + window.width, window.y + window.height, 1,1,1,1, 1)
 end
 
-local function DrawInputs()
-    keySelector:draw()
-    commandSelector:draw()
-    addButton:draw()
-end
-
 function widget:DrawScreen()
     if not show then return end
     if not font then return end
@@ -613,7 +607,9 @@ function widget:DrawScreen()
         font:End()
         
         bindingList:draw()
-        DrawInputs()
+        keySelector:draw()
+        commandSelector:draw()
+        addButton:draw()
         
     end, function()
         gl.PopMatrix()
