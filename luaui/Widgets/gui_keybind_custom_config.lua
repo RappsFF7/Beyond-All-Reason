@@ -1,18 +1,4 @@
 ---@class Widget
----@field GetInfo function
----@field Initialize function
----@field Shutdown function
----@field ViewResize function
----@field DrawScreen function
----@field MouseMove function
----@field MousePress function
----@field MouseWheel function
----@field KeyPress function
----@field TextInput function
----@field IsAbove function
----@field Toggle function
----@field GetConfigData function
----@field SetConfigData function
 local widget = widget
 
 function widget:GetInfo()
@@ -30,6 +16,7 @@ end
 -- Forward declarations for dropdowns
 local keySelector
 local commandSelector
+local addButton
 
 -- Constants
 local BUTTON_HEIGHT = 24
@@ -70,18 +57,80 @@ local function WidgetPCall(func, callback, ...)
     end
 end
 
--- Mouse state
-local mx, my = 0, 0
-function widget:MouseMove(x, y, dx, dy, button)
-    mx, my = x, y
+-- Classes
+local UiButtonInteractable = {}
+UiButtonInteractable.__index = UiButtonInteractable
+
+--[[
+    px, py, sx, sy,  tl, tr, br, bl,  ptl, ptr, pbr, pbl,  opacity, color1, color2, bgpadding, glossMult,
+    text
+]]--
+function UiButtonInteractable.new(options)
+    local self = setmetatable(options or {}, UiButtonInteractable)
+
+    self.state = ''
+
+    local onClickCallback
+    
+    function UiButtonInteractable:draw()
+        -- Draw button
+        UiButton(
+            self.px, self.py, self.sx, self.sy,
+            1,1,1,1, 1,1,1,1, nil,
+            self.state == 'active' and colors.buttonActive or
+            self.state == 'hover' and colors.buttonHover or
+            colors.buttonBackground
+        )
+        
+        -- Draw text
+        font:Begin()
+        font:SetTextColor(1,1,1,1)
+        font:Print(
+            self.text,
+            self.px + elementPadding,
+            self.py + elementPadding,
+            FONT_SIZE, "n"
+        )
+        font:End()
+    end
+
+    function UiButtonInteractable:handleMouseMove(x, y, dx, dy, button)
+        if math_isInRect(x, y, self.px, self.py, self.sx, self.sy) then
+            self.state = 'hover'
+        else
+            if self.state == 'hover' then
+                self.state = ''
+            end
+        end
+    end
+    
+    function UiButtonInteractable:handleMousePress(x, y, button)
+        if math_isInRect(x, y, self.px, self.py, self.sx, self.sy) then
+            self.state = 'active'
+            if onClickCallback then
+               onClickCallback()
+            end
+        end
+    end
+
+    function UiButtonInteractable:handleMouseRelease(x, y, button)
+        if not math_isInRect(x, y, self.px, self.py, self.sx, self.sy) then
+            self.state = ''
+        end
+    end
+
+    function UiButtonInteractable:onClick(func)
+        onClickCallback = func
+    end
+
+    return self
 end
 
--- Classes
 local KeySelector = {}
 KeySelector.__index = KeySelector
 
 function KeySelector.new(options)
-    local self = setmetatable({}, KeySelector)
+    local self = setmetatable(options, KeySelector)
 
     self.selectedValue = options.initialValue or "New Key"
     self.isActive = false
@@ -121,6 +170,7 @@ function KeySelector.new(options)
             self.y + elementPadding,
             FONT_SIZE, "n"
         )
+        font:End()
     end
     
     function KeySelector:handleMousePress(x, y)
@@ -461,6 +511,7 @@ function BindingList.new(options)
 end
 
 -- State
+local mx, my
 local vsx, vsy = Spring.GetViewGeometry()
 local show = false
 local centerPosX = 0.5
@@ -478,7 +529,6 @@ local bindingList
 local currentBindings = {}
 local keyInput = "New Key"
 local commandInput = "New Command"
-local buttonHover = false
 
 -- Available commands and keys
 local availableCommands = {}
@@ -569,24 +619,7 @@ end
 local function DrawInputs()
     keySelector:draw()
     commandSelector:draw()
-    
-    -- Add button
-    UiButton(
-        window.x + window.width - elementPadding - 50,
-        window.y + elementPadding + INPUT_HEIGHT + elementPadding,
-        window.x + window.width - elementPadding,
-        window.y + elementPadding + INPUT_HEIGHT*2 + elementPadding,
-        buttonHover and colors.buttonHover or colors.buttonBackground
-    )
-    
-    font:Begin()
-    font:SetTextColor(1,1,1,1)
-    font:Print("Add",
-        window.x + window.width - elementPadding - 45,
-        window.y + elementPadding + INPUT_HEIGHT + 2*elementPadding,
-        FONT_SIZE, "n"
-    )
-    font:End()
+    addButton:draw()
 end
 
 function widget:DrawScreen()
@@ -596,6 +629,10 @@ function widget:DrawScreen()
     gl.PushMatrix()
 
     WidgetPCall(function()
+        -- MouseMove only triggers when the mouse is down, but we want it always captured
+        local x, y, l = Spring.GetMouseState()
+        self:MouseMove(x, y)
+
         DrawBackground()
         
         -- Draw title
@@ -619,17 +656,21 @@ function widget:MouseWheel(up, value)
     return bindingList:handleMouseWheel(up, value)
 end
 
+function widget:MouseMove(x, y, dx, dy, button)
+    -- Does this ever get called without us triggering in this class?
+    --log('MouseMove')
+    if x == mx and y == my then
+        return
+    end
+
+    mx, my = x, y
+    addButton:handleMouseMove(x, y, dx, dy, button)
+end
+
 function widget:MousePress(x, y, button)
     if not show then return false end
-    
-    -- Check if clicked on the add button
-    if x > window.x + window.width - elementPadding - 50 and x < window.x + window.width - elementPadding and
-       y > window.y + elementPadding + INPUT_HEIGHT + elementPadding and y < window.y + elementPadding + INPUT_HEIGHT*2 + elementPadding then
-        SaveBinding(keyInput, commandInput)
-        keySelector.selectedValue = "New Key"
-        commandSelector.selectedValue = "New Command"
-        return true
-    end
+
+    addButton:handleMousePress(x, y, button)
     
     -- Handle dropdown clicks
     if keySelector:handleMousePress(x, y) then
@@ -651,6 +692,10 @@ function widget:MousePress(x, y, button)
     keySelector.isActive = false
     commandSelector.isActive = false
     return false
+end
+
+function widget:MouseRelease(x, y, button)
+    addButton:handleMouseRelease(x, y, button)
 end
 
 function widget:KeyPress(key, mods, isRepeat, label)
@@ -733,6 +778,20 @@ local function InitializeUI()
 
     -- Font
     font = WG['fonts'].getFont()
+
+    -- Add button
+    addButton = UiButtonInteractable.new({
+        px = window.x + window.width - elementPadding - 50,
+        py = window.y + elementPadding + INPUT_HEIGHT + elementPadding,
+        sx = window.x + window.width - elementPadding,
+        sy = window.y + elementPadding + INPUT_HEIGHT*2 + elementPadding,
+        text = 'Add'
+    })
+    addButton:onClick(function()
+        SaveBinding(keyInput, commandInput)
+        keySelector.selectedValue = "New Key"
+        commandSelector.selectedValue = "New Command"
+    end)
     
     -- Dropdowns
     keySelector = KeySelector.new({
