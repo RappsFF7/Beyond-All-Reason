@@ -15,6 +15,10 @@ function widget:GetInfo()
     }
 end
 
+-- Local variables
+
+-- #region Local variables
+
 -- Constants
 local BUTTON_HEIGHT = 24
 local INPUT_HEIGHT = 24
@@ -83,7 +87,11 @@ local function WidgetPCall(func, callback, ...)
     end
 end
 
+-- #endregion local variables
+
 -- Classes
+
+-- #region Classes
 local UiButtonInteractable = {}
 UiButtonInteractable.__index = UiButtonInteractable
 
@@ -599,7 +607,11 @@ function HotkeyManager.new(options)
 
     return self
 end
+-- #endregion
 
+-- Local functions
+
+--#region Local functions
 local function DrawBackground()
     -- Add guishader effect
     if WG['guishader'] then
@@ -614,6 +626,86 @@ local function DrawBackground()
     UiElement(window.x, window.y, window.x + window.width, window.y + window.height, 1,1,1,1, 1)
 end
 
+local function InitializeUI()
+    -- Get FlowUI elements
+    bgpadding = WG.FlowUI.elementPadding
+    elementCorner = WG.FlowUI.elementCorner 
+    elementPadding = WG.FlowUI.elementPadding
+
+	RectRound = WG.FlowUI.Draw.RectRound
+	UiElement = WG.FlowUI.Draw.Element
+	UiButton = WG.FlowUI.Draw.Button
+	UiSlider = WG.FlowUI.Draw.Slider
+	UiSliderKnob = WG.FlowUI.Draw.SliderKnob
+	UiToggle = WG.FlowUI.Draw.Toggle
+	UiSelector = WG.FlowUI.Draw.Selector
+	UiSelectHighlight = WG.FlowUI.Draw.SelectHighlight
+
+    -- Font
+    font = WG['fonts'].getFont()
+
+    hotkeyManager = HotkeyManager.new()
+
+    -- Add button
+    addButton = UiButtonInteractable.new({
+        px = window.x + window.width - elementPadding - 50,
+        py = window.y + elementPadding + INPUT_HEIGHT + elementPadding,
+        sx = window.x + window.width - elementPadding,
+        sy = window.y + elementPadding + INPUT_HEIGHT*2 + elementPadding,
+        text = 'Add'
+    })
+    addButton:onClick(function()
+        hotkeyManager:SaveBinding(keyInput, commandInput)
+        keySelector.selectedValue = "New Key"
+        commandSelector.selectedValue = "New Command"
+    end)
+    
+    -- Dropdowns
+    keySelector = KeySelector.new({
+        initialValue = "New Key",
+        onChange = function(value)
+            keyInput = value
+        end
+    })
+    keySelector:setDimensions(
+        window.x + elementPadding,
+        window.y + elementPadding + INPUT_HEIGHT + elementPadding,
+        window.width/2 - 2*elementPadding,
+        INPUT_HEIGHT
+    )
+
+    commandSelector = CommandSelector.new({
+        initialValue = "New Command",
+        options = {},  -- Will be populated from availableCommands
+        onChange = function(value)
+            commandInput = value
+        end
+    })
+    commandSelector:setDimensions(
+        window.x + window.width/2 + elementPadding,
+        window.y + elementPadding + INPUT_HEIGHT + elementPadding,
+        window.width/2 - elementPadding - 60,
+        INPUT_HEIGHT
+    )
+
+    -- Create binding list
+    bindingList = BindingList.new({
+        onRemove = function(...) 
+            hotkeyManager:RemoveBinding(...)
+        end
+    })
+    bindingList:setDimensions(
+        window.x + elementPadding,
+        window.y + elementPadding + INPUT_HEIGHT + elementPadding + HEADER_SIZE + elementPadding,
+        window.width - 2*elementPadding,
+        SCROLL_HEIGHT
+    )
+end
+-- #endregion
+
+-- Widget overrides
+
+-- #region Widget overrides
 function widget:DrawScreen()
     if not show then return end
     if not font then return end
@@ -751,82 +843,6 @@ function widget:Toggle()
     end
 end
 
-local function InitializeUI()
-    -- Get FlowUI elements
-    bgpadding = WG.FlowUI.elementPadding
-    elementCorner = WG.FlowUI.elementCorner 
-    elementPadding = WG.FlowUI.elementPadding
-
-	RectRound = WG.FlowUI.Draw.RectRound
-	UiElement = WG.FlowUI.Draw.Element
-	UiButton = WG.FlowUI.Draw.Button
-	UiSlider = WG.FlowUI.Draw.Slider
-	UiSliderKnob = WG.FlowUI.Draw.SliderKnob
-	UiToggle = WG.FlowUI.Draw.Toggle
-	UiSelector = WG.FlowUI.Draw.Selector
-	UiSelectHighlight = WG.FlowUI.Draw.SelectHighlight
-
-    -- Font
-    font = WG['fonts'].getFont()
-
-    hotkeyManager = HotkeyManager.new()
-
-    -- Add button
-    addButton = UiButtonInteractable.new({
-        px = window.x + window.width - elementPadding - 50,
-        py = window.y + elementPadding + INPUT_HEIGHT + elementPadding,
-        sx = window.x + window.width - elementPadding,
-        sy = window.y + elementPadding + INPUT_HEIGHT*2 + elementPadding,
-        text = 'Add'
-    })
-    addButton:onClick(function()
-        hotkeyManager:SaveBinding(keyInput, commandInput)
-        keySelector.selectedValue = "New Key"
-        commandSelector.selectedValue = "New Command"
-    end)
-    
-    -- Dropdowns
-    keySelector = KeySelector.new({
-        initialValue = "New Key",
-        onChange = function(value)
-            keyInput = value
-        end
-    })
-    keySelector:setDimensions(
-        window.x + elementPadding,
-        window.y + elementPadding + INPUT_HEIGHT + elementPadding,
-        window.width/2 - 2*elementPadding,
-        INPUT_HEIGHT
-    )
-
-    commandSelector = CommandSelector.new({
-        initialValue = "New Command",
-        options = {},  -- Will be populated from availableCommands
-        onChange = function(value)
-            commandInput = value
-        end
-    })
-    commandSelector:setDimensions(
-        window.x + window.width/2 + elementPadding,
-        window.y + elementPadding + INPUT_HEIGHT + elementPadding,
-        window.width/2 - elementPadding - 60,
-        INPUT_HEIGHT
-    )
-
-    -- Create binding list
-    bindingList = BindingList.new({
-        onRemove = function(...) 
-            hotkeyManager:RemoveBinding(...)
-        end
-    })
-    bindingList:setDimensions(
-        window.x + elementPadding,
-        window.y + elementPadding + INPUT_HEIGHT + elementPadding + HEADER_SIZE + elementPadding,
-        window.width - 2*elementPadding,
-        SCROLL_HEIGHT
-    )
-end
-
 function widget:Initialize()
     WidgetPCall(function()
         InitializeUI()
@@ -884,3 +900,4 @@ function widget:SetConfigData(data)
         show = data.show
     end
 end
+-- #endregion
