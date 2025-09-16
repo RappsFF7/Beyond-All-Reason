@@ -13,14 +13,6 @@ function widget:GetInfo()
     }
 end
 
--- Mouse state
-local mx, my
-
--- Forward declarations for dropdowns
-local keySelector
-local commandSelector
-local addButton
-
 -- Constants
 local BUTTON_HEIGHT = 24
 local INPUT_HEIGHT = 24
@@ -41,6 +33,33 @@ local colors = {
     removeButton = {0.7, 0.2, 0.2, 0.8},
     removeButtonHover = {0.8, 0.3, 0.3, 0.9}
 }
+
+-- Forward declarations for dropdowns
+local hotkeyManager
+local bindingList
+local keySelector
+local commandSelector
+local addButton
+
+-- Mouse state
+local mx, my
+
+-- State
+local vsx, vsy = Spring.GetViewGeometry()
+local show = false
+local centerPosX = 0.5
+local centerPosY = 0.5
+local window = {
+    width = 800,
+    height = 600
+}
+window.x = math.floor((vsx * centerPosX) - (window.width / 2))
+window.y = math.floor((vsy * centerPosY) - (window.height / 2))
+
+-- UI Elements state
+local backgroundGuishader
+local keyInput = "New Key"
+local commandInput = "New Command"
 
 -- Helper functions
 local math_isInRect = math.isInRect
@@ -472,95 +491,85 @@ function BindingList.new(options)
     return self
 end
 
--- State
-local vsx, vsy = Spring.GetViewGeometry()
-local show = false
-local centerPosX = 0.5
-local centerPosY = 0.5
-local window = {
-    width = 800,
-    height = 600
-}
-window.x = math.floor((vsx * centerPosX) - (window.width / 2))
-window.y = math.floor((vsy * centerPosY) - (window.height / 2))
+local HotkeyManager = {}
+HotkeyManager.__index = HotkeyManager
 
--- UI Elements state
-local backgroundGuishader
-local bindingList
-local currentBindings = {}
-local keyInput = "New Key"
-local commandInput = "New Command"
+function HotkeyManager.new(options)
+    local self = setmetatable(options or {}, HotkeyManager)
 
--- Available commands and keys
-local availableCommands = {}
-local availableKeys = {}
+    self.currentBindings = {}
+    self.availableCommands = {}
+    self.availableKeys = {}
 
-local function LoadHotkeyConfigs()
-    -- Load available commands and keys from hotkey config files
-    local gridKeys = VFS.LoadFile("luaui/configs/hotkeys/grid_keys.txt")
-    if gridKeys then
-        for line in gridKeys:gmatch("[^\r\n]+") do
-            if line:match("^bind%s+") then
-                local _, _, key, command = line:find("^bind%s+([^%s]+)%s+([^%s]+)")
-                if key and command then
-                    availableKeys[key] = true
-                    availableCommands[command] = true
+    function self:LoadHotkeyConfigs()
+        -- Load available commands and keys from hotkey config files
+        local gridKeys = VFS.LoadFile("luaui/configs/hotkeys/grid_keys.txt")
+        if gridKeys then
+            for line in gridKeys:gmatch("[^\r\n]+") do
+                if line:match("^bind%s+") then
+                    local _, _, key, command = line:find("^bind%s+([^%s]+)%s+([^%s]+)")
+                    if key and command then
+                        self.availableKeys[key] = true
+                        self.availableCommands[command] = true
+                    end
                 end
             end
         end
+        
+        -- Add common modifiers
+        local modifiers = {"Alt+", "Ctrl+", "Shift+", "Any+"}
+        local baseKeys = {}
+        for key in pairs(self.availableKeys) do
+            if not key:find("+") then
+                baseKeys[key] = true
+            end
+        end
+        
+        -- Generate modified keys
+        for key in pairs(baseKeys) do
+            for _, modifier in ipairs(modifiers) do
+                self.availableKeys[modifier .. key] = true
+            end
+        end
+        
+        -- Update dropdown options
+        local keyOptions = {}
+        for key in pairs(self.availableKeys) do
+            table.insert(keyOptions, key)
+        end
+        table.sort(keyOptions)
+        keySelector.options = keyOptions
+        
+        local cmdOptions = {}
+        for cmd in pairs(self.availableCommands) do
+            table.insert(cmdOptions, cmd)
+        end
+        table.sort(cmdOptions)
+        commandSelector.options = cmdOptions
     end
-    
-    -- Add common modifiers
-    local modifiers = {"Alt+", "Ctrl+", "Shift+", "Any+"}
-    local baseKeys = {}
-    for key in pairs(availableKeys) do
-        if not key:find("+") then
-            baseKeys[key] = true
+
+    function self:LoadCurrentBindings()
+        self.currentBindings = Spring.GetKeyBindings() or {}
+        if bindingList then
+            bindingList:setBindings(self.currentBindings)
         end
     end
-    
-    -- Generate modified keys
-    for key in pairs(baseKeys) do
-        for _, modifier in ipairs(modifiers) do
-            availableKeys[modifier .. key] = true
+
+    function self:SaveBinding(key, command)
+        if key and command and key ~= "" and command ~= "" then
+            Spring.SendCommands({"bind " .. key .. " " .. command})
+            self:LoadCurrentBindings()
         end
     end
-    
-    -- Update dropdown options
-    local keyOptions = {}
-    for key in pairs(availableKeys) do
-        table.insert(keyOptions, key)
-    end
-    table.sort(keyOptions)
-    keySelector.options = keyOptions
-    
-    local cmdOptions = {}
-    for cmd in pairs(availableCommands) do
-        table.insert(cmdOptions, cmd)
-    end
-    table.sort(cmdOptions)
-    commandSelector.options = cmdOptions
-end
 
-local function LoadCurrentBindings()
-    currentBindings = Spring.GetKeyBindings() or {}
-    if bindingList then
-        bindingList:setBindings(currentBindings)
+    function self:RemoveBinding(key, command)
+        if key and command then
+            Spring.SendCommands({"unbind " .. key .. " " .. command})
+            self:LoadCurrentBindings()
+        end
     end
-end
 
-local function SaveBinding(key, command)
-    if key and command and key ~= "" and command ~= "" then
-        Spring.SendCommands({"bind " .. key .. " " .. command})
-        LoadCurrentBindings()
-    end
-end
-
-local function RemoveBinding(key, command)
-    if key and command then
-        Spring.SendCommands({"unbind " .. key .. " " .. command})
-        LoadCurrentBindings()
-    end
+    return self
 end
 
 local function DrawBackground()
@@ -706,7 +715,7 @@ end
 function widget:Toggle()
     show = not show
     if show then
-        LoadCurrentBindings()
+        hotkeyManager:LoadCurrentBindings()
     else
         if WG['guishader'] then
             WG['guishader'].DeleteDlist('keybindconfig')
@@ -736,6 +745,8 @@ local function InitializeUI()
     -- Font
     font = WG['fonts'].getFont()
 
+    hotkeyManager = HotkeyManager.new()
+
     -- Add button
     addButton = UiButtonInteractable.new({
         px = window.x + window.width - elementPadding - 50,
@@ -745,7 +756,7 @@ local function InitializeUI()
         text = 'Add'
     })
     addButton:onClick(function()
-        SaveBinding(keyInput, commandInput)
+        hotkeyManager:SaveBinding(keyInput, commandInput)
         keySelector.selectedValue = "New Key"
         commandSelector.selectedValue = "New Command"
     end)
@@ -780,7 +791,9 @@ local function InitializeUI()
 
     -- Create binding list
     bindingList = BindingList.new({
-        onRemove = RemoveBinding
+        onRemove = function(...) 
+            hotkeyManager:RemoveBinding(...)
+        end
     })
     bindingList:setDimensions(
         window.x + elementPadding,
@@ -803,8 +816,8 @@ function widget:Initialize()
             widget:Toggle()
         end, nil, "t")
         
-        LoadHotkeyConfigs()
-        LoadCurrentBindings()
+        hotkeyManager:LoadHotkeyConfigs()
+        hotkeyManager:LoadCurrentBindings()
     
         WG['keybind_custom_config'] = widget
     end)
