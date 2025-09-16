@@ -41,11 +41,29 @@ local colors = {
     removeButtonHover = {0.8, 0.3, 0.3, 0.9}
 }
 
+-- Get FlowUI elements
+local bgpadding = WG.FlowUI.elementPadding
+local elementCorner = WG.FlowUI.elementCorner
+local elementPadding = WG.FlowUI.elementPadding
+
+local RectRound = WG.FlowUI.Draw.RectRound
+local UiElement = WG.FlowUI.Draw.Element
+local UiButton = WG.FlowUI.Draw.Button
+local UiSlider = WG.FlowUI.Draw.Slider
+local UiSliderKnob = WG.FlowUI.Draw.SliderKnob
+local UiToggle = WG.FlowUI.Draw.Toggle
+local UiSelector = WG.FlowUI.Draw.Selector
+local UiSelectHighlight = WG.FlowUI.Draw.SelectHighlight
+
+-- Font
+local font = WG['fonts'].getFont()
+
 -- Forward declarations for dropdowns
 local hotkeyManager
 local bindingList
 local keySelector
 local commandSelector
+local extraSelector
 local addButton
 
 -- Mouse state
@@ -65,8 +83,6 @@ window.y = math.floor((vsy * centerPosY) - (window.height / 2))
 
 -- UI Elements state
 local backgroundGuishader
-local keyInput = "New Key"
-local commandInput = "New Command"
 
 -- Helper functions
 local math_isInRect = math.isInRect
@@ -104,11 +120,14 @@ function UiButtonInteractable.new(options)
     self.state = ''
     self.onClickCallback = nil -- Store callback as instance variable
     
+    local font = WG['fonts'].getFont()
+    
     function self:draw()
         -- Draw button
         UiButton(
             self.px, self.py, self.sx, self.sy,
-            1,1,1,1, 1,1,1,1, nil,
+            self.tl, self.tr, self.br, self.bl,
+            self.ptl, self.ptr, self.pbr, self.pbl, self.opacity,
             self.state == 'active' and colors.buttonActive or
             self.state == 'hover' and colors.buttonHover or
             colors.buttonBackground
@@ -160,6 +179,81 @@ function UiButtonInteractable.new(options)
 
     function self:onClick(func)
         self.onClickCallback = func
+    end
+
+    return self
+end
+
+local UiTextboxInteractable = {}
+UiTextboxInteractable.__index = UiTextboxInteractable
+
+--[[
+    px, py, sx, sy,  tl, tr, br, bl,  ptl, ptr, pbr, pbl,  opacity, color1, color2, bgpadding, glossMult,
+    text
+]]--
+function UiTextboxInteractable.new(options)
+    local self = setmetatable(options, UiTextboxInteractable)
+    self.isActive = false
+    self.onClick = options.onClick
+    self.onChange = options.onChange
+    self.text = options.initialValue or ""
+    
+    local font = WG['fonts'].getFont()
+
+    local button = UiButtonInteractable.new({
+        px = self.px, py = self.py, sx = self.sx, sy = self.sy,
+        tl = 1, tr = 1, bl = 1, br = 1,
+        ptl = 1, ptr = 1, pbl = 1, pbr = 1,
+        text = self.text
+    })
+
+    function self:draw()
+        button.text = self.text
+        button:draw()
+    end
+
+    function self:handleMousePress(x, y)
+        local wasClicked = button:handleMousePress(x, y)
+        
+        if wasClicked then
+            self.isActive = true
+            if self.onClick then
+                self.onClick()
+            end
+            return true
+        end
+
+        self.isActive = false
+        return false
+    end
+
+    function self:handleTextInput(char)
+        if not self.isActive then return false end
+        
+        self.text = self.text .. char
+        if self.onChange then
+            self.onChange(self.text)
+        end
+
+        return true
+    end
+
+    function self:handleKeyPress(key)
+        if not self.isActive then return false end
+        
+        if key == 8 then -- Backspace
+            if #self.text > 0 then
+                self.text = self.text:sub(1, -2)
+                if self.onChange then
+                    self.onChange(self.text)
+                end
+            end
+            return true
+        elseif key == 13 then -- Enter
+            self.isActive = false
+            return true
+        end
+        return false
     end
 
     return self
@@ -424,6 +518,10 @@ function BindingList.new(options)
 
     local font = WG['fonts'].getFont()
 
+    local function isButtonVisible(button)
+        return button.py and button.py < 0 and button.py > -self.height
+    end
+
     function self:setDimensions(x, y, width, height)
         self.x = x
         self.y = y
@@ -480,9 +578,9 @@ function BindingList.new(options)
                 local deleteButton = self.deleteButtons[i]
                 -- The button is positioned relative to the binding list's coordinate space
                 deleteButton.px = self.width - 50
-                deleteButton.py = yPos
+                deleteButton.py = yPos + elementPadding
                 deleteButton.sx = self.width - 10
-                deleteButton.sy = yPos + BUTTON_HEIGHT
+                deleteButton.sy = yPos + BUTTON_HEIGHT - elementPadding
                 deleteButton:draw()
             end
         end
@@ -513,8 +611,7 @@ function BindingList.new(options)
         
         -- Check all visible buttons if they are clicked
         for index, button in ipairs(self.deleteButtons) do
-            local isVisible = button.py and button.py < 0 and button.py > -self.height
-            if isVisible then
+            if isButtonVisible(button) then
                 if button:handleMousePress(localX, buttonY, nil, true) then
                     return true
                 end
@@ -591,9 +688,9 @@ function HotkeyManager.new(options)
         end
     end
 
-    function self:SaveBinding(key, command)
+    function self:SaveBinding(key, command, extras)
         if key and command and key ~= "" and command ~= "" then
-            Spring.SendCommands({"bind " .. key .. " " .. command})
+            Spring.SendCommands({"bind " .. key .. " " .. command .. " " .. extras})
             self:LoadCurrentBindings()
         end
     end
@@ -601,6 +698,7 @@ function HotkeyManager.new(options)
     function self:RemoveBinding(key, command)
         if key and command then
             Spring.SendCommands({"unbind " .. key .. " " .. command})
+            log('Binding removed: ', key, command)
             self:LoadCurrentBindings()
         end
     end
@@ -627,66 +725,57 @@ local function DrawBackground()
 end
 
 local function InitializeUI()
-    -- Get FlowUI elements
-    bgpadding = WG.FlowUI.elementPadding
-    elementCorner = WG.FlowUI.elementCorner 
-    elementPadding = WG.FlowUI.elementPadding
-
-	RectRound = WG.FlowUI.Draw.RectRound
-	UiElement = WG.FlowUI.Draw.Element
-	UiButton = WG.FlowUI.Draw.Button
-	UiSlider = WG.FlowUI.Draw.Slider
-	UiSliderKnob = WG.FlowUI.Draw.SliderKnob
-	UiToggle = WG.FlowUI.Draw.Toggle
-	UiSelector = WG.FlowUI.Draw.Selector
-	UiSelectHighlight = WG.FlowUI.Draw.SelectHighlight
-
-    -- Font
-    font = WG['fonts'].getFont()
-
     hotkeyManager = HotkeyManager.new()
 
     -- Add button
     addButton = UiButtonInteractable.new({
         px = window.x + window.width - elementPadding - 50,
         py = window.y + elementPadding + INPUT_HEIGHT + elementPadding,
-        sx = window.x + window.width - elementPadding,
+        sx = window.x + window.width - elementPadding - PADDING,
         sy = window.y + elementPadding + INPUT_HEIGHT*2 + elementPadding,
         text = 'Add'
     })
     addButton:onClick(function()
-        hotkeyManager:SaveBinding(keyInput, commandInput)
+        hotkeyManager:SaveBinding(keySelector.selectedValue, commandSelector.selectedValue, extraSelector.text)
         keySelector.selectedValue = "New Key"
         commandSelector.selectedValue = "New Command"
+        extraSelector.text = "Command Extras"
     end)
     
-    -- Dropdowns
+    -- Add hotkey buttons
     keySelector = KeySelector.new({
-        initialValue = "New Key",
-        onChange = function(value)
-            keyInput = value
-        end
+        initialValue = "New Key"
     })
     keySelector:setDimensions(
         window.x + elementPadding,
         window.y + elementPadding + INPUT_HEIGHT + elementPadding,
-        window.width/2 - 2*elementPadding,
+        math.floor(window.width * 1/3) - 2*elementPadding,
         INPUT_HEIGHT
     )
 
     commandSelector = CommandSelector.new({
         initialValue = "New Command",
         options = {},  -- Will be populated from availableCommands
-        onChange = function(value)
-            commandInput = value
-        end
     })
     commandSelector:setDimensions(
-        window.x + window.width/2 + elementPadding,
+        window.x + math.floor(window.width * 1/3) + elementPadding,
         window.y + elementPadding + INPUT_HEIGHT + elementPadding,
-        window.width/2 - elementPadding - 60,
+        math.floor(window.width * 1/3) - elementPadding,
         INPUT_HEIGHT
     )
+    
+    extraSelector = UiTextboxInteractable.new({
+        initialValue = 'Command Extras',
+        px = window.x + math.floor(window.width * 2/3) + elementPadding,
+        py = window.y + elementPadding + INPUT_HEIGHT + elementPadding,
+        sx = window.x + math.floor(window.width * 3/3) + elementPadding - 70,
+        sy = window.y + elementPadding + INPUT_HEIGHT*2 + elementPadding,
+        onClick = function()
+            if extraSelector.text == "Command Extras" then
+                extraSelector.text = ""
+            end
+        end
+    })
 
     -- Create binding list
     bindingList = BindingList.new({
@@ -729,6 +818,7 @@ function widget:DrawScreen()
         bindingList:draw()
         keySelector:draw()
         commandSelector:draw()
+        extraSelector:draw()
         addButton:draw()
         
     end, function()
@@ -757,11 +847,20 @@ function widget:MousePress(x, y, button)
     if not show then return false end
 
     addButton:handleMousePress(x, y, button)
-    keySelector:handleMousePress(x, y, button)
+    
+    -- Handle dropdown clicks
+    if keySelector:handleMousePress(x, y, button) then
+        return true
+    end
     
     -- Handle dropdown clicks
     if commandSelector:handleMousePress(x, y) then
         keySelector.isActive = false
+        return true
+    end
+
+    -- Handle extra selector clicks
+    if extraSelector:handleMousePress(x, y, button) then
         return true
     end
     
@@ -773,6 +872,8 @@ function widget:MousePress(x, y, button)
     -- Close dropdowns when clicking elsewhere
     keySelector.isActive = false
     commandSelector.isActive = false
+    extraSelector.isActive = false
+
     return false
 end
 
@@ -789,9 +890,10 @@ function widget:KeyPress(key, mods, isRepeat, label)
             keySelector.selectedValue = "New Key"
             return true
         end
-        if keySelector.isActive or commandSelector.isActive then
+        if keySelector.isActive or commandSelector.isActive or extraSelector.isActive then
             keySelector.isActive = false
             commandSelector.isActive = false
+            extraSelector.isActive = false
             return true
         end
         widget:Toggle()
@@ -808,6 +910,11 @@ function widget:KeyPress(key, mods, isRepeat, label)
         return commandSelector:handleKeyPress(key)
     end
     
+    -- Handle extra selector input
+    if extraSelector.isActive then
+        return extraSelector:handleKeyPress(key)
+    end
+    
     return false
 end
 
@@ -816,6 +923,10 @@ function widget:TextInput(char)
     
     if commandSelector.isActive then
         return commandSelector:handleTextInput(char)
+    end
+    
+    if extraSelector.isActive then
+        return extraSelector:handleTextInput(char)
     end
     
     return false
