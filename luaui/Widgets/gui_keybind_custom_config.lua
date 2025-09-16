@@ -371,7 +371,7 @@ function BindingList.new(options)
     self.removeHover = -1
     self.bindings = {}
     self.onRemove = options.onRemove
-    
+
     local font = WG['fonts'].getFont()
 
     function BindingList:setDimensions(x, y, width, height)
@@ -479,10 +479,6 @@ local currentBindings = {}
 local keyInput = "New Key"
 local commandInput = "New Command"
 local buttonHover = false
-local showSuggestions = false
-local suggestions = {}
-local selectedSuggestion = 1
-local MAX_SUGGESTIONS = 5
 
 -- Available commands and keys
 local availableCommands = {}
@@ -556,23 +552,6 @@ local function RemoveBinding(key, command)
     end
 end
 
-local function UpdateSuggestions()
-    suggestions = {}
-    if commandInput ~= "" then
-        for command in pairs(availableCommands) do
-            if command:lower():find(commandInput:lower(), 1, true) then
-                table.insert(suggestions, command)
-                if #suggestions >= MAX_SUGGESTIONS then
-                    break
-                end
-            end
-        end
-        table.sort(suggestions)
-    end
-    showSuggestions = #suggestions > 0
-    selectedSuggestion = 1
-end
-
 local function DrawBackground()
     -- Add guishader effect
     if WG['guishader'] then
@@ -610,33 +589,6 @@ local function DrawInputs()
     font:End()
 end
 
-local function DrawSuggestions()
-    if not showSuggestions then return end
-    
-    local x = window.x + window.width/2 + elementPadding
-    local y = window.y + elementPadding + INPUT_HEIGHT*3 + elementPadding
-    
-    for i, suggestion in ipairs(suggestions) do
-        local isSelected = i == selectedSuggestion
-        
-        UiElement(
-            x, y,
-            x + window.width/2 - elementPadding - 60,
-            y + INPUT_HEIGHT,
-            0,0,0,0,
-            1,
-            isSelected and colors.buttonHover or colors.buttonBackground
-        )
-        
-        font:Begin()
-        font:SetTextColor(1,1,1,1)
-        font:Print(suggestion, x + elementPadding, y + elementPadding, FONT_SIZE, "n")
-        font:End()
-        
-        y = y - (INPUT_HEIGHT + 2)
-    end
-end
-
 function widget:DrawScreen()
     if not show then return end
     if not font then return end
@@ -655,7 +607,6 @@ function widget:DrawScreen()
         
         bindingList:draw()
         DrawInputs()
-        DrawSuggestions()
         
     end, function()
         gl.PopMatrix()
@@ -803,7 +754,6 @@ local function InitializeUI()
         options = {},  -- Will be populated from availableCommands
         onChange = function(value)
             commandInput = value
-            showSuggestions = false
         end
     })
     commandSelector:setDimensions(
