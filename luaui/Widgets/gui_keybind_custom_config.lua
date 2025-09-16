@@ -113,6 +113,7 @@ function UiButtonInteractable.new(options)
             if onClickCallback then
                onClickCallback()
             end
+            return true
         end
     end
 
@@ -213,11 +214,26 @@ function CommandSelector.new(options)
     
     local font = WG['fonts'].getFont()
 
+    local button = UiButtonInteractable.new({
+        tl = 1, tr = 1, bl = 1, br = 1,
+        ptl = 1, ptr = 1, pbl = 1, pbr = 1,
+        color1 = self.isActive and colors.buttonActive or colors.buttonBackground,
+        text = options.initialValue or "New Command"
+    })
+    button:onClick(function()
+        self.isActive = not self.isActive
+        if self.isActive then self.filter = "" end
+    end)
+
     function CommandSelector:setDimensions(x, y, width, height)
         self.x = x
         self.y = y
         self.width = width
         self.height = height
+        button.px = x
+        button.py = y
+        button.sx = x + width
+        button.sy = y + height
     end
 
     function CommandSelector:updateFilteredOptions()
@@ -235,29 +251,14 @@ function CommandSelector.new(options)
     end
 
     function CommandSelector:draw()
-        -- Draw main button
-        UiButton(
-            self.x,
-            self.y,
-            self.x + self.width,
-            self.y + self.height,
-            1,1,1,1, 1,1,1,1, nil,
-            self.isActive and colors.buttonActive or colors.buttonBackground
-        )
-        
-        -- Draw selected text/filter
-        font:Begin()
-        font:SetTextColor(1,1,1,1)
-        font:Print(self.isActive and self.filter or self.selectedValue,
-            self.x + elementPadding * 2,
-            self.y + elementPadding,
-            FONT_SIZE, "n"
-        )
+        button.text = self.isActive and self.filter or self.selectedValue
+        button:draw()
         
         -- Draw dropdown arrow
         local arrowSize = FONT_SIZE
         local arrowX = self.x + self.width - elementPadding * 3 - arrowSize
         local arrowY = self.y + elementPadding
+        font:Begin()
         font:Print("▼", arrowX, arrowY, arrowSize, "n")
         font:End()
         
@@ -305,9 +306,9 @@ function CommandSelector.new(options)
     end
 
     function CommandSelector:handleMousePress(x, y)
-        if math_isInRect(x, y, self.x, self.y, self.x + self.width, self.y + self.height) then
-            self.isActive = not self.isActive
-            if self.isActive then self.filter = "" end
+        local wasClicked = button:handleMousePress(x, y)
+
+        if wasClicked then
             return true
         end
         
