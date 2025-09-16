@@ -1,5 +1,7 @@
 ---@class Widget
 local widget = widget
+local VFS = VFS
+local LOG = LOG
 
 function widget:GetInfo()
     return {
@@ -20,6 +22,7 @@ local PADDING = 8
 local FONT_SIZE = 14
 local HEADER_SIZE = 18
 local SCROLL_HEIGHT = 480  -- Will be updated based on window height
+local LOG_SECTION = 'gui_keybind_custom_config.lua'
 
 -- Colors
 local colors = {
@@ -67,6 +70,7 @@ local math_isInRect = math.isInRect
 local function log(...)
     print(...)
     Spring.Echo(...)
+    Spring.Log(LOG_SECTION, LOG.INFO, ...)
 end
 
 local function WidgetPCall(func, callback, ...)
@@ -89,10 +93,8 @@ UiButtonInteractable.__index = UiButtonInteractable
 ]]--
 function UiButtonInteractable.new(options)
     local self = setmetatable(options or {}, UiButtonInteractable)
-
     self.state = ''
-
-    local onClickCallback
+    self.onClickCallback = nil -- Store callback as instance variable
     
     function self:draw()
         -- Draw button
@@ -127,13 +129,19 @@ function UiButtonInteractable.new(options)
     end
     
     function self:handleMousePress(x, y, button)
+        if not (x and y and self.px and self.py and self.sx and self.sy) then
+            return false
+        end
+
         if math_isInRect(x, y, self.px, self.py, self.sx, self.sy) then
             self.state = 'active'
-            if onClickCallback then
-               onClickCallback()
+            if self.onClickCallback then
+               self.onClickCallback()
             end
             return true
         end
+
+        return false
     end
 
     function self:handleMouseRelease(x, y, button)
@@ -143,7 +151,7 @@ function UiButtonInteractable.new(options)
     end
 
     function self:onClick(func)
-        onClickCallback = func
+        self.onClickCallback = func
     end
 
     return self
@@ -241,7 +249,9 @@ function CommandSelector.new(options)
     })
     button:onClick(function()
         self.isActive = not self.isActive
-        if self.isActive then self.filter = "" end
+        if self.isActive then
+            self.filter = ""
+        end
     end)
 
     function self:setDimensions(x, y, width, height)
@@ -401,6 +411,7 @@ function BindingList.new(options)
     self.maxScrollOffset = 0
     self.removeHover = -1
     self.bindings = {}
+    self.deleteButtons = {}
     self.onRemove = options.onRemove
 
     local font = WG['fonts'].getFont()
@@ -415,6 +426,25 @@ function BindingList.new(options)
     function self:setBindings(bindings)
         self.bindings = bindings
         self.maxScrollOffset = math.max(self.minScrollOffset, (#bindings * (BUTTON_HEIGHT + elementPadding)) - SCROLL_HEIGHT)
+        
+        -- Create/update delete buttons
+        self.deleteButtons = {}
+        for i = 1, #bindings do
+            local button = UiButtonInteractable.new({
+                text = "Del" .. i,
+                color1 = colors.removeButton,
+                color2 = colors.removeButtonHover
+            })
+            -- Fix: Call onClick through instance rather than as a function
+            button:onClick(function()
+                if self.onRemove then
+                    self.onRemove(bindings[i].boundWith, bindings[i].command)
+                    -- Update max scroll offset
+                    self.maxScrollOffset = math.max(self.minScrollOffset, (#self.bindings * (BUTTON_HEIGHT + elementPadding)) - SCROLL_HEIGHT)
+                end
+            end)
+            self.deleteButtons[i] = button
+        end
     end
     
     function self:draw()
@@ -426,7 +456,7 @@ function BindingList.new(options)
             local yPos = -((i-1) * (BUTTON_HEIGHT + elementPadding)) + self.scrollOffset
             
             if yPos > -SCROLL_HEIGHT and yPos < BUTTON_HEIGHT then
-                -- Draw binding row
+                -- Draw binding row background
                 UiElement(0, yPos, self.width - 60, yPos + BUTTON_HEIGHT, 0,0,0,0, 1)
                 
                 -- Draw text
@@ -438,19 +468,14 @@ function BindingList.new(options)
                 font:Print(binding.extra or "", self.width * (2/3), yPos + elementPadding, FONT_SIZE, "n")
                 font:End()
                 
-                -- Draw remove button
-                UiButton(
-                    self.width - 50, 
-                    yPos, 
-                    self.width, 
-                    yPos + BUTTON_HEIGHT,
-                    self.removeHover == i and colors.removeButtonHover or colors.removeButton
-                )
-                
-                font:Begin()
-                font:SetTextColor(1,1,1,1)
-                font:Print("Del", self.width - 45, yPos + elementPadding, FONT_SIZE, "n")
-                font:End()
+                -- Position and draw delete button
+                local deleteButton = self.deleteButtons[i]
+                -- The button is positioned relative to the binding list's coordinate space
+                deleteButton.px = self.width - 50
+                deleteButton.py = yPos
+                deleteButton.sx = self.width - 10
+                deleteButton.sy = yPos + BUTTON_HEIGHT
+                deleteButton:draw()
             end
         end
         
@@ -471,20 +496,23 @@ function BindingList.new(options)
     end
     
     function self:handleMousePress(x, y)
-        -- Translate coordinates to binding list space
+        -- Convert global coordinates to local binding list coordinates
         local localX = x - self.x
         local localY = y - self.y
+
+        -- Get button y (because we draw from the top down)
+        local buttonY = localY - self.height
         
-        -- Check if clicked on a remove button
-        local relativeY = -localY + self.scrollOffset
-        local index = math.floor(relativeY / (BUTTON_HEIGHT + elementPadding)) + 1
-        if index > 0 and index <= #self.bindings and
-           localX > self.width - 50 and localX < self.width then
-            if self.onRemove then 
-                self.onRemove(self.bindings[index].boundWith, self.bindings[index].command)
+        -- Check all visible buttons if they are clicked
+        for index, button in ipairs(self.deleteButtons) do
+            local isVisible = button.py and button.py < 0 and button.py > -self.height
+            if isVisible then
+                if button:handleMousePress(localX, buttonY, nil, true) then
+                    return true
+                end
             end
-            return true
         end
+        
         return false
     end
 
