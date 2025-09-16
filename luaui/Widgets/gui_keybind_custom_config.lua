@@ -13,6 +13,9 @@ function widget:GetInfo()
     }
 end
 
+-- Mouse state
+local mx, my
+
 -- Forward declarations for dropdowns
 local keySelector
 local commandSelector
@@ -72,7 +75,7 @@ function UiButtonInteractable.new(options)
 
     local onClickCallback
     
-    function UiButtonInteractable:draw()
+    function self:draw()
         -- Draw button
         UiButton(
             self.px, self.py, self.sx, self.sy,
@@ -94,7 +97,7 @@ function UiButtonInteractable.new(options)
         font:End()
     end
 
-    function UiButtonInteractable:handleMouseMove(x, y, dx, dy, button)
+    function self:handleMouseMove(x, y, dx, dy, button)
         if math_isInRect(x, y, self.px, self.py, self.sx, self.sy) then
             self.state = 'hover'
         else
@@ -104,7 +107,7 @@ function UiButtonInteractable.new(options)
         end
     end
     
-    function UiButtonInteractable:handleMousePress(x, y, button)
+    function self:handleMousePress(x, y, button)
         if math_isInRect(x, y, self.px, self.py, self.sx, self.sy) then
             self.state = 'active'
             if onClickCallback then
@@ -113,13 +116,13 @@ function UiButtonInteractable.new(options)
         end
     end
 
-    function UiButtonInteractable:handleMouseRelease(x, y, button)
+    function self:handleMouseRelease(x, y, button)
         if not math_isInRect(x, y, self.px, self.py, self.sx, self.sy) then
             self.state = ''
         end
     end
 
-    function UiButtonInteractable:onClick(func)
+    function self:onClick(func)
         onClickCallback = func
     end
 
@@ -132,83 +135,40 @@ KeySelector.__index = KeySelector
 function KeySelector.new(options)
     local self = setmetatable(options, KeySelector)
 
-    self.selectedValue = options.initialValue or "New Key"
-    self.isActive = false
-    self.x = 0
-    self.y = 0
-    self.width = 0
-    self.height = 0
-    self.options = options.options or {}
-    self.onChange = options.onChange
     self.isCapturing = false
-    
-    local font = WG['fonts'].getFont()
+
+    local button = UiButtonInteractable.new({
+        tl = 1, tr = 1, bl = 1, br = 1,
+        ptl = 1, ptr = 1, pbl = 1, pbr = 1,
+        color1 = self.isCapturing and colors.buttonActive or colors.buttonBackground,
+        text = options.initialValue or "New Key"
+    })
+    button:onClick(function()
+        if not self.isCapturing then
+            self:startCapture()
+            return
+        end
+    end)
 
     function KeySelector:setDimensions(x, y, width, height)
-        self.x = x
-        self.y = y
-        self.width = width
-        self.height = height
+        button.px = x
+        button.py = y
+        button.sx = x + width
+        button.sy = y + height
     end
     
     function KeySelector:draw()
-        -- Draw main button
-        UiButton(
-            self.x,
-            self.y,
-            self.x + self.width,
-            self.y + self.height,
-            1,1,1,1, 1,1,1,1, nil,
-            self.isActive and colors.buttonActive or colors.buttonBackground
-        )
-        
-        -- Draw selected text
-        font:Begin()
-        font:SetTextColor(1,1,1,1)
-        font:Print(self.selectedValue,
-            self.x + elementPadding * 2,
-            self.y + elementPadding,
-            FONT_SIZE, "n"
-        )
-        font:End()
+        button:draw()
     end
     
     function KeySelector:handleMousePress(x, y)
-        if math_isInRect(x, y, self.x, self.y, self.x + self.width, self.y + self.height) then
-            if not self.isActive and not self.isCapturing then
-                self:startCapture()
-                return true
-            end
-            self.isActive = not self.isActive
-            return true
-        end
-        
-        if self.isActive then
-            local dropdownY = self.y + self.height
-            local itemHeight = self.height - elementPadding
-            
-            for i, option in ipairs(self.options) do
-                local optionY = dropdownY + ((i-1) * itemHeight)
-                if math_isInRect(x, y,
-                    self.x,
-                    optionY, 
-                    self.x + self.width,
-                    optionY + itemHeight
-                ) then
-                    self.selectedValue = option
-                    if self.onChange then self.onChange(option) end
-                    self.isActive = false
-                    return true
-                end
-            end
-        end
-        self.isActive = false
-        return false
+        button:handleMousePress(x, y)
     end
     
     function KeySelector:startCapture()
         self.isCapturing = true
         self.selectedValue = "Press a key..."
+        button.text = "Press a key..."
     end
     
     function KeySelector:handleKeyCapture(key, mods)
@@ -225,6 +185,7 @@ function KeySelector.new(options)
         local keySymbol = Spring.GetKeySymbol(key)
         if keySymbol then
             self.selectedValue = modstring .. keySymbol
+            button.text = modstring .. keySymbol
             self.isCapturing = false
             if self.onChange then self.onChange(self.selectedValue) end
             return true
@@ -511,7 +472,6 @@ function BindingList.new(options)
 end
 
 -- State
-local mx, my
 local vsx, vsy = Spring.GetViewGeometry()
 local show = false
 local centerPosX = 0.5
@@ -671,13 +631,9 @@ function widget:MousePress(x, y, button)
     if not show then return false end
 
     addButton:handleMousePress(x, y, button)
+    keySelector:handleMousePress(x, y, button)
     
     -- Handle dropdown clicks
-    if keySelector:handleMousePress(x, y) then
-        commandSelector.isActive = false
-        return true
-    end
-    
     if commandSelector:handleMousePress(x, y) then
         keySelector.isActive = false
         return true
@@ -796,7 +752,6 @@ local function InitializeUI()
     -- Dropdowns
     keySelector = KeySelector.new({
         initialValue = "New Key",
-        options = {},  -- Will be populated from availableKeys
         onChange = function(value)
             keyInput = value
         end
