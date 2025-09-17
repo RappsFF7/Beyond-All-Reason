@@ -671,11 +671,21 @@ function BindingList.new(options)
                 -- The button is positioned relative to the binding list's coordinate space
                 deleteButton.px = self.width - 55
                 deleteButton.py = yPos + elementPadding
-                deleteButton.sx = self.width - 5
+                deleteButton.sx = self.width - 15
                 deleteButton.sy = yPos + BUTTON_HEIGHT - elementPadding
                 deleteButton:DrawScreen()
             end
         end
+
+        -- Draw scrollbar
+        WG.FlowUI.Draw.Scroller(
+            self.width - 7,
+            self.height - HEADER_SIZE - PADDING - 70,
+            self.width,
+            -HEADER_SIZE - PADDING,
+            self.maxScrollOffset,
+            -self.scrollOffset
+        )
         
         gl.Scissor(false)
         gl.PopMatrix()
