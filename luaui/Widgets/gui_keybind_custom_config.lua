@@ -16,9 +16,9 @@ function widget:GetInfo()
     }
 end
 
--- Local variables
+-- Local variables and helper functions
 
--- #region Local variables
+-- #region Local variables and helper functions
 
 -- Constants
 local BUTTON_HEIGHT = 24
@@ -26,7 +26,7 @@ local INPUT_HEIGHT = 24
 local PADDING = 8
 local FONT_SIZE = 14
 local HEADER_SIZE = 18
-local SCROLL_HEIGHT = 480  -- Will be updated based on window height
+local SCROLL_HEIGHT = 500  -- Will be updated based on window height
 local LOG_SECTION = 'gui_keybind_custom_config.lua'
 
 -- Colors
@@ -83,6 +83,8 @@ local extraSelector
 local addButton
 local filterTextbox
 
+local widgetLifecycleRegistry
+
 -- UI Elements state
 local backgroundGuishader
 
@@ -110,6 +112,52 @@ end
 -- Classes
 
 -- #region Classes
+
+--[[
+    Widget Lifecycle Registry System
+
+    Events: 
+        MouseWheel, MouseMove, MousePress, MouseRelease
+        KeyPress,
+        TextInput
+]]--
+local WidgetLifecycleRegistry = {}
+WidgetLifecycleRegistry.__index = WidgetLifecycleRegistry
+
+function WidgetLifecycleRegistry.new()
+    local self = setmetatable({}, WidgetLifecycleRegistry)
+
+    self.components = {}
+
+    function WidgetLifecycleRegistry:register(component)
+        table.insert(self.components, component)
+    end
+    
+    function WidgetLifecycleRegistry:unregister(component)
+        for i, comp in ipairs(self.components) do
+            if comp == component then
+                table.remove(self.components, i)
+                break
+            end
+        end
+    end
+    
+    function WidgetLifecycleRegistry:dispatchEvent(eventName, ...)
+        for i = #self.components, 1, -1 do  -- Reverse order so last added (top) component gets first chance
+            local component = self.components[i]
+            if component[eventName] then
+                local result = component[eventName](component, ...)
+                if result then
+                    return true
+                end
+            end
+        end
+        return false
+    end
+
+    return self
+end
+
 local UiButtonInteractable = {}
 UiButtonInteractable.__index = UiButtonInteractable
 
@@ -124,7 +172,7 @@ function UiButtonInteractable.new(options)
     
     local font = WG['fonts'].getFont()
     
-    function self:draw()
+    function self:DrawScreen()
         -- Draw button
         UiButton(
             self.px, self.py, self.sx, self.sy,
@@ -147,7 +195,7 @@ function UiButtonInteractable.new(options)
         font:End()
     end
 
-    function self:handleMouseMove(x, y, dx, dy, button)
+    function self:MouseMove(x, y, dx, dy, button)
         if math_isInRect(x, y, self.px, self.py, self.sx, self.sy) then
             self.state = 'hover'
         else
@@ -157,7 +205,7 @@ function UiButtonInteractable.new(options)
         end
     end
     
-    function self:handleMousePress(x, y, button)
+    function self:MousePress(x, y, button)
         if not (x and y and self.px and self.py and self.sx and self.sy) then
             return false
         end
@@ -173,7 +221,7 @@ function UiButtonInteractable.new(options)
         return false
     end
 
-    function self:handleMouseRelease(x, y, button)
+    function self:MouseRelease(x, y, button)
         if not math_isInRect(x, y, self.px, self.py, self.sx, self.sy) then
             self.state = ''
         end
@@ -209,13 +257,13 @@ function UiTextboxInteractable.new(options)
         text = self.text
     })
 
-    function self:draw()
+    function self:DrawScreen()
         button.text = self.text
-        button:draw()
+        button:DrawScreen()
     end
 
-    function self:handleMousePress(x, y)
-        local wasClicked = button:handleMousePress(x, y)
+    function self:MousePress(x, y)
+        local wasClicked = button:MousePress(x, y)
         
         if wasClicked then
             self.isActive = true
@@ -229,7 +277,7 @@ function UiTextboxInteractable.new(options)
         return false
     end
 
-    function self:handleTextInput(char)
+    function self:TextInput(char)
         if not self.isActive then return false end
         
         self.text = self.text .. char
@@ -240,7 +288,7 @@ function UiTextboxInteractable.new(options)
         return true
     end
 
-    function self:handleKeyPress(key)
+    function self:KeyPress(key)
         if not self.isActive then return false end
         
         if key == 8 then -- Backspace
@@ -278,7 +326,7 @@ function KeySelector.new(options)
     button:onClick(function()
         if not self.isCapturing then
             self:startCapture()
-            return
+            return true
         end
     end)
 
@@ -289,12 +337,15 @@ function KeySelector.new(options)
         button.sy = y + height
     end
     
-    function self:draw()
-        button:draw()
+    function self:DrawScreen()
+        button:DrawScreen()
     end
     
-    function self:handleMousePress(x, y)
-        button:handleMousePress(x, y)
+    function self:MousePress(x, y)
+        local isClicked = button:MousePress(x, y)
+        if not isClicked then
+            self.isCapturing = false
+        end
     end
     
     function self:startCapture()
@@ -303,7 +354,7 @@ function KeySelector.new(options)
         button.text = "Press a key..."
     end
     
-    function self:handleKeyCapture(key, mods)
+    function self:KeyPress(key, mods)
         if not self.isCapturing then return false end
         
         local modstring = ""
@@ -383,9 +434,9 @@ function CommandSelector.new(options)
         return filtered
     end
 
-    function self:draw()
+    function self:DrawScreen()
         button.text = self.isActive and self.filter or self.selectedValue
-        button:draw()
+        button:DrawScreen()
         
         -- Draw dropdown arrow
         local arrowSize = FONT_SIZE
@@ -438,8 +489,8 @@ function CommandSelector.new(options)
         end
     end
 
-    function self:handleMousePress(x, y)
-        local wasClicked = button:handleMousePress(x, y)
+    function self:MousePress(x, y)
+        local wasClicked = button:MousePress(x, y)
 
         if wasClicked then
             return true
@@ -470,14 +521,14 @@ function CommandSelector.new(options)
         return false
     end
 
-    function self:handleTextInput(char)
+    function self:TextInput(char)
         if not self.isActive then return false end
         
         self.filter = self.filter .. char
         return true
     end
 
-    function self:handleKeyPress(key)
+    function self:KeyPress(key)
         if not self.isActive then return false end
         
         if key == 8 then -- Backspace
@@ -543,7 +594,7 @@ function BindingList.new(options)
                 end
             end
         end
-        self.maxScrollOffset = math.max(self.minScrollOffset, (#self.filteredBindings * (BUTTON_HEIGHT + elementPadding)) - SCROLL_HEIGHT)
+        self.maxScrollOffset = math.max(self.minScrollOffset, (#self.filteredBindings * (BUTTON_HEIGHT + elementPadding)) + HEADER_SIZE + PADDING - self.height)
         self.scrollOffset = math.min(self.scrollOffset, self.maxScrollOffset) -- Adjust scroll if needed
     end
 
@@ -571,22 +622,31 @@ function BindingList.new(options)
                 if self.onRemove then
                     local binding = self.filteredBindings[i]
                     self.onRemove(binding.boundWith, binding.command)
-                    self.maxScrollOffset = math.max(self.minScrollOffset, (#self.filteredBindings * (BUTTON_HEIGHT + elementPadding)) - SCROLL_HEIGHT)
+                    self.maxScrollOffset = math.max(self.minScrollOffset, (#self.filteredBindings * (BUTTON_HEIGHT + elementPadding)) + HEADER_SIZE + PADDING - self.height)
                 end
             end)
             self.deleteButtons[i] = button
         end
     end
     
-    function self:draw()
+    function self:DrawScreen()
         gl.PushMatrix()
         gl.Translate(self.x, self.y + self.height, 0)
         gl.Scissor(self.x, self.y, self.width, self.height)
-    
+        
+        -- Draw header
+        font:Begin()
+        font:Print("Keys", 0, -HEADER_SIZE, HEADER_SIZE, "n")
+        font:Print("Command", self.width * 1/3, -HEADER_SIZE, HEADER_SIZE, "n")
+        font:Print("Command Extras", self.width * 2/3, -HEADER_SIZE, HEADER_SIZE, "n")
+        font:End()
+        
+        -- Draw table
+        gl.Scissor(self.x, self.y + PADDING, self.width, self.height - HEADER_SIZE - PADDING*2)
         for i, binding in ipairs(self.filteredBindings) do
-            local yPos = -((i-1) * (BUTTON_HEIGHT + elementPadding)) + self.scrollOffset
+            local yPos = -(i * (BUTTON_HEIGHT + elementPadding)) - HEADER_SIZE + self.scrollOffset
             
-            if yPos > -SCROLL_HEIGHT and yPos < BUTTON_HEIGHT then
+            if yPos > -(self.height + BUTTON_HEIGHT) and yPos < BUTTON_HEIGHT then
                 -- Draw binding row background
                 UiElement(0, yPos, self.width - 60, yPos + BUTTON_HEIGHT, 0,0,0,0, 1)
                 
@@ -606,7 +666,7 @@ function BindingList.new(options)
                 deleteButton.py = yPos + elementPadding
                 deleteButton.sx = self.width - 10
                 deleteButton.sy = yPos + BUTTON_HEIGHT - elementPadding
-                deleteButton:draw()
+                deleteButton:DrawScreen()
             end
         end
         
@@ -614,7 +674,7 @@ function BindingList.new(options)
         gl.PopMatrix()
     end
     
-    function self:handleMouseWheel(up, value)
+    function self:MouseWheel(up, value)
         local mouseX, mouseY = Spring.GetMouseState()
 
         if math_isInRect(mouseX, mouseY, self.x, self.y, self.x + self.width, self.y + self.height) then
@@ -626,7 +686,7 @@ function BindingList.new(options)
         return false
     end
     
-    function self:handleMousePress(x, y)
+    function self:MousePress(x, y)
         -- Convert global coordinates to local binding list coordinates
         local localX = x - self.x
         local localY = y - self.y
@@ -637,7 +697,7 @@ function BindingList.new(options)
         -- Check all visible buttons if they are clicked
         for index, button in ipairs(self.deleteButtons) do
             if isButtonVisible(button) then
-                if button:handleMousePress(localX, buttonY, nil, true) then
+                if button:MousePress(localX, buttonY, nil, true) then
                     return true
                 end
             end
@@ -764,7 +824,7 @@ local function InitializeUI()
         hotkeyManager:SaveBinding(keySelector.selectedValue, commandSelector.selectedValue, extraSelector.text)
         keySelector.selectedValue = "New Key"
         commandSelector.selectedValue = "New Command"
-        extraSelector.text = "Command Extras"
+        extraSelector.text = "New Command Extras"
         filterTextbox.text = "Filter..."
     end)
     
@@ -791,13 +851,13 @@ local function InitializeUI()
     )
     
     extraSelector = UiTextboxInteractable.new({
-        initialValue = 'Command Extras',
+        initialValue = 'New Command Extras',
         px = window.x + math.floor(window.width * 2/3) + elementPadding,
         py = window.y + elementPadding + INPUT_HEIGHT + elementPadding,
         sx = window.x + math.floor(window.width * 3/3) + elementPadding - 70,
         sy = window.y + elementPadding + INPUT_HEIGHT*2 + elementPadding,
         onClick = function()
-            if extraSelector.text == "Command Extras" then
+            if extraSelector.text == "New Command Extras" then
                 extraSelector.text = ""
             end
         end
@@ -813,7 +873,7 @@ local function InitializeUI()
         window.x + elementPadding,
         window.y + elementPadding + INPUT_HEIGHT + elementPadding + HEADER_SIZE + elementPadding,
         window.width - 2*elementPadding,
-        SCROLL_HEIGHT - INPUT_HEIGHT - elementPadding  -- Reduce height to make room for filter
+        SCROLL_HEIGHT
     )
 
     -- Add filter textbox at the bottom
@@ -834,6 +894,14 @@ local function InitializeUI()
             end
         end
     })
+
+    -- Register all UI components
+    widgetLifecycleRegistry:register(keySelector)
+    widgetLifecycleRegistry:register(commandSelector)
+    widgetLifecycleRegistry:register(extraSelector)
+    widgetLifecycleRegistry:register(addButton)
+    widgetLifecycleRegistry:register(bindingList)
+    widgetLifecycleRegistry:register(filterTextbox)
 end
 -- #endregion
 
@@ -860,12 +928,7 @@ function widget:DrawScreen()
                 window.y + window.height - HEADER_SIZE - PADDING, HEADER_SIZE, "n")
         font:End()
         
-        bindingList:draw()
-        keySelector:draw()
-        commandSelector:draw()
-        extraSelector:draw()
-        addButton:draw()
-        filterTextbox:draw()
+        widgetLifecycleRegistry:dispatchEvent('DrawScreen')
         
     end, function()
         gl.PopMatrix()
@@ -875,121 +938,50 @@ end
 function widget:MouseWheel(up, value)
     if not show then return false end
     
-    return bindingList:handleMouseWheel(up, value)
+    return widgetLifecycleRegistry:dispatchEvent('MouseWheel', up, value)
 end
 
 function widget:MouseMove(x, y, dx, dy, button)
-    -- Does this ever get called without us triggering in this class?
-    --log('MouseMove')
-    if x == mx and y == my then
-        return
-    end
-
+    if not show then return false end
+    if x == mx and y == my then return end
     mx, my = x, y
-    addButton:handleMouseMove(x, y, dx, dy, button)
+
+    return widgetLifecycleRegistry:dispatchEvent('MouseMove', x, y, dx, dy, button)
 end
 
 function widget:MousePress(x, y, button)
     if not show then return false end
-
-    addButton:handleMousePress(x, y, button)
     
-    -- Handle dropdown clicks
-    if keySelector:handleMousePress(x, y, button) then
-        return true
-    end
-    
-    -- Handle dropdown clicks
-    if commandSelector:handleMousePress(x, y) then
-        keySelector.isActive = false
-        return true
-    end
-
-    -- Handle extra selector clicks
-    if extraSelector:handleMousePress(x, y, button) then
-        return true
-    end
-    
-    -- Handle binding list clicks
-    if bindingList:handleMousePress(x, y) then
-        return true
-    end
-
-    if filterTextbox:handleMousePress(x, y, button) then
-        return true
-    end
-    
-    -- Make inactive when clicking elsewhere
-    keySelector.isActive = false
-    commandSelector.isActive = false
-    extraSelector.isActive = false
-    filterTextbox.isActive = false
-
-    return false
+    return widgetLifecycleRegistry:dispatchEvent('MousePress', x, y, button)
 end
 
 function widget:MouseRelease(x, y, button)
-    addButton:handleMouseRelease(x, y, button)
+    if not show then return false end
+
+    return widgetLifecycleRegistry:dispatchEvent('MouseRelease', x, y, button)
 end
 
 function widget:KeyPress(key, mods, isRepeat, label)
     if not show then return false end
     
+    -- Special handling for ESC key
     if key == 27 then -- Escape
-        if keySelector.isCapturing then
-            keySelector.isCapturing = false
-            keySelector.selectedValue = "New Key"
-            return true
-        end
-        if keySelector.isActive or commandSelector.isActive or extraSelector.isActive or filterTextbox.isActive then
-            keySelector.isActive = false
-            commandSelector.isActive = false
-            extraSelector.isActive = false
-            filterTextbox.isActive = false
-            return true
-        end
+        -- Check if any component wants to handle it first
+        local result = widgetLifecycleRegistry:dispatchEvent('KeyPress', key, mods, isRepeat, label)
+        if result then return true end
+        
+        -- If not handled, close the widget
         widget:Toggle()
         return true
     end
     
-    -- Handle key capture for key selector
-    if keySelector.isCapturing then
-        return keySelector:handleKeyCapture(key, mods)
-    end
-    
-    -- Handle command selector input
-    if commandSelector.isActive then
-        return commandSelector:handleKeyPress(key)
-    end
-    
-    -- Handle extra selector input
-    if extraSelector.isActive then
-        return extraSelector:handleKeyPress(key)
-    end
-
-    if filterTextbox.isActive then
-        return filterTextbox:handleKeyPress(key)
-    end
-    
-    return false
+    return widgetLifecycleRegistry:dispatchEvent('KeyPress', key, mods, isRepeat, label)
 end
 
 function widget:TextInput(char)
     if not show then return false end
     
-    if commandSelector.isActive then
-        return commandSelector:handleTextInput(char)
-    end
-    
-    if extraSelector.isActive then
-        return extraSelector:handleTextInput(char)
-    end
-
-    if filterTextbox.isActive then
-        return filterTextbox:handleTextInput(char)
-    end
-    
-    return false
+    return widgetLifecycleRegistry:dispatchEvent('TextInput', char)
 end
 
 function widget:Toggle()
@@ -1010,6 +1002,8 @@ end
 function widget:Initialize()
     WidgetPCall(function()
         font = WG['fonts'].getFont()
+
+        widgetLifecycleRegistry = WidgetLifecycleRegistry.new()
         
         InitializeUI()
         
