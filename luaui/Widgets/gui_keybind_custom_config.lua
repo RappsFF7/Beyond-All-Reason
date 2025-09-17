@@ -400,6 +400,7 @@ function CommandSelector.new(options)
     
     local font = WG['fonts'].getFont()
 
+    -- UiSelector
     local button = UiButtonInteractable.new({
         tl = 1, tr = 1, bl = 1, br = 1,
         ptl = 1, ptr = 1, pbl = 1, pbr = 1,
@@ -443,6 +444,7 @@ function CommandSelector.new(options)
         button:DrawScreen()
         
         -- Draw dropdown arrow
+        -- UiSelector
         local arrowSize = FONT_SIZE
         local arrowX = self.x + self.width - elementPadding * 3 - arrowSize
         local arrowY = self.y + elementPadding
@@ -457,11 +459,12 @@ function CommandSelector.new(options)
             local itemHeight = self.height - elementPadding
             local maxItems = math.min(10, #filteredOptions)
             
-            UiSelector(
+            RectRound(
                 self.x,
                 dropdownY,
                 self.x + self.width,
-                dropdownY + (maxItems * itemHeight)
+                dropdownY + (maxItems * itemHeight),
+                1, 2, 2, 2, 2, { 0.5, 0.5, 0.5, 0.95 }
             )
             
             font:Begin()
