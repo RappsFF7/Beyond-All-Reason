@@ -25,17 +25,21 @@ local BUTTON_HEIGHT = 24
 local INPUT_HEIGHT = 24
 local PADDING = 8
 local FONT_SIZE = 14
+local HEADER_SMALL_SIZE = 16
 local HEADER_SIZE = 18
-local SCROLL_HEIGHT = 500  -- Will be updated based on window height
+local FOOTER_SIZE = 18
 local LOG_SECTION = 'gui_keybind_custom_config.lua'
 
 -- Colors
 local colors = {
     windowBackground = {0, 0, 0, math.max(0.75, Spring.GetConfigFloat("ui_opacity", 0.7))},
+    windowBackgroundGold1 = {77/255, 59/255, 37/255, math.max(0.75, Spring.GetConfigFloat("ui_opacity", 0.7))},
+    windowBackgroundGold2 = {32/255, 24/255, 11/255, math.max(0.75, Spring.GetConfigFloat("ui_opacity", 0.7))},
     buttonBackground = {0.15, 0.15, 0.15, 1},
     buttonHover = {0.25, 0.25, 0.25, 1}, 
     buttonActive = {0.3, 0.3, 0.3, 1},
     text = {1, 1, 1, 1},
+    textGold = {171/255, 141/255, 107/255, 1},
     input = {0.12, 0.12, 0.12, 1},
     inputActive = {0.2, 0.2, 0.2, 1},
     removeButton = {0.7, 0.2, 0.2, 0.8},
@@ -662,9 +666,9 @@ function BindingList.new(options)
                 -- Position and draw delete button
                 local deleteButton = self.deleteButtons[i]
                 -- The button is positioned relative to the binding list's coordinate space
-                deleteButton.px = self.width - 50
+                deleteButton.px = self.width - 55
                 deleteButton.py = yPos + elementPadding
-                deleteButton.sx = self.width - 10
+                deleteButton.sx = self.width - 5
                 deleteButton.sy = yPos + BUTTON_HEIGHT - elementPadding
                 deleteButton:DrawScreen()
             end
@@ -796,7 +800,7 @@ end
 
 --#region Local functions
 local function DrawBackground()
-    -- Add guishader effect
+    -- Add guishader (blur) effect
     if WG['guishader'] then
         if not backgroundGuishader then
             backgroundGuishader = gl.CreateList(function()
@@ -805,19 +809,70 @@ local function DrawBackground()
         end
         WG['guishader'].InsertDlist(backgroundGuishader, 'keybindconfig')
     end
+
+    -- Title
+    UiElement(window.x, window.y + window.height, window.x + 240, window.y + window.height + HEADER_SIZE + PADDING*2, 
+        1,1,1,1, 1,nil,nil,nil, 1, colors.windowBackgroundGold1, colors.windowBackgroundGold2)
     
-    UiElement(window.x, window.y, window.x + window.width, window.y + window.height, 1,1,1,1, 1)
+    font:Begin()
+    font:SetTextColor(colors.textGold)
+    font:Print("Keybinding Configuration", window.x + PADDING*2,
+            window.y + window.height + HEADER_SIZE - PADDING, HEADER_SMALL_SIZE, "n")
+    font:End()
+    
+    -- Main window
+    UiElement(window.x, window.y + FOOTER_SIZE + 2*PADDING, window.x + window.width, window.y + window.height, 1,1,1,1, 1)
+
+    -- Footer
+    UiElement(window.x, window.y, window.x + window.width * 1/3 + PADDING, window.y + FOOTER_SIZE + 2*PADDING + elementPadding, 1,1,1,1, 1)
 end
 
 local function InitializeUI()
     hotkeyManager = HotkeyManager.new()
+    
+    -- Key selector
+    keySelector = KeySelector.new({
+        initialValue = "New Key"
+    })
+    keySelector:setDimensions(
+        window.x + elementPadding + PADDING,
+        window.y + elementPadding + INPUT_HEIGHT + FOOTER_SIZE,
+        math.floor(window.width * 1/3) - 2*elementPadding - PADDING,
+        INPUT_HEIGHT
+    )
+
+    -- Command selector
+    commandSelector = CommandSelector.new({
+        initialValue = "New Command",
+        options = {},  -- Will be populated from availableCommands
+    })
+    commandSelector:setDimensions(
+        window.x + math.floor(window.width * 1/3) + elementPadding,
+        window.y + elementPadding + INPUT_HEIGHT + FOOTER_SIZE,
+        math.floor(window.width * 1/3) - elementPadding,
+        INPUT_HEIGHT
+    )
+    
+    -- Extra command selector
+    extraSelector = UiTextboxInteractable.new({
+        initialValue = 'New Command Extras',
+        px = window.x + math.floor(window.width * 2/3) + elementPadding,
+        py = window.y + elementPadding + INPUT_HEIGHT + FOOTER_SIZE,
+        sx = window.x + math.floor(window.width * 3/3) + elementPadding - PADDING - 70,
+        sy = window.y + elementPadding + INPUT_HEIGHT*2 + FOOTER_SIZE,
+        onClick = function()
+            if extraSelector.text == "New Command Extras" then
+                extraSelector.text = ""
+            end
+        end
+    })
 
     -- Add button
     addButton = UiButtonInteractable.new({
-        px = window.x + window.width - elementPadding - 50,
-        py = window.y + elementPadding + INPUT_HEIGHT + elementPadding,
-        sx = window.x + window.width - elementPadding - PADDING,
-        sy = window.y + elementPadding + INPUT_HEIGHT*2 + elementPadding,
+        px = window.x + window.width - elementPadding + PADDING - 70,
+        py = window.y + elementPadding + INPUT_HEIGHT + FOOTER_SIZE,
+        sx = window.x + window.width - 2*elementPadding - PADDING,
+        sy = window.y + elementPadding + INPUT_HEIGHT*2 + FOOTER_SIZE,
         text = 'Add'
     })
     addButton:onClick(function()
@@ -827,41 +882,6 @@ local function InitializeUI()
         extraSelector.text = "New Command Extras"
         filterTextbox.text = "Filter..."
     end)
-    
-    -- Add hotkey buttons
-    keySelector = KeySelector.new({
-        initialValue = "New Key"
-    })
-    keySelector:setDimensions(
-        window.x + elementPadding,
-        window.y + elementPadding + INPUT_HEIGHT + elementPadding,
-        math.floor(window.width * 1/3) - 2*elementPadding,
-        INPUT_HEIGHT
-    )
-
-    commandSelector = CommandSelector.new({
-        initialValue = "New Command",
-        options = {},  -- Will be populated from availableCommands
-    })
-    commandSelector:setDimensions(
-        window.x + math.floor(window.width * 1/3) + elementPadding,
-        window.y + elementPadding + INPUT_HEIGHT + elementPadding,
-        math.floor(window.width * 1/3) - elementPadding,
-        INPUT_HEIGHT
-    )
-    
-    extraSelector = UiTextboxInteractable.new({
-        initialValue = 'New Command Extras',
-        px = window.x + math.floor(window.width * 2/3) + elementPadding,
-        py = window.y + elementPadding + INPUT_HEIGHT + elementPadding,
-        sx = window.x + math.floor(window.width * 3/3) + elementPadding - 70,
-        sy = window.y + elementPadding + INPUT_HEIGHT*2 + elementPadding,
-        onClick = function()
-            if extraSelector.text == "New Command Extras" then
-                extraSelector.text = ""
-            end
-        end
-    })
 
     -- Create binding list
     bindingList = BindingList.new({
@@ -870,19 +890,19 @@ local function InitializeUI()
         end
     })
     bindingList:setDimensions(
-        window.x + elementPadding,
-        window.y + elementPadding + INPUT_HEIGHT + elementPadding + HEADER_SIZE + elementPadding,
-        window.width - 2*elementPadding,
-        SCROLL_HEIGHT
+        window.x + elementPadding + PADDING,
+        window.y + INPUT_HEIGHT + FOOTER_SIZE + 4*PADDING,
+        window.width - 2*elementPadding - 2*PADDING,
+        window.height - 4*elementPadding - HEADER_SIZE - FOOTER_SIZE - 4*PADDING
     )
 
     -- Add filter textbox at the bottom
     filterTextbox = UiTextboxInteractable.new({
         initialValue = 'Filter...',
-        px = window.x + elementPadding,
-        py = window.y + elementPadding,
-        sx = window.x + window.width - 2*elementPadding,
-        sy = window.y + elementPadding + INPUT_HEIGHT,
+        px = window.x + elementPadding + PADDING,
+        py = window.y + 2*elementPadding,
+        sx = window.x + window.width * 1/3,
+        sy = window.y + 2*elementPadding + INPUT_HEIGHT,
         onClick = function()
             if filterTextbox.text == "Filter..." then
                 filterTextbox.text = ""
@@ -919,14 +939,9 @@ function widget:DrawScreen()
         local x, y, l = Spring.GetMouseState()
         self:MouseMove(x, y)
 
-        DrawBackground()
-        
-        -- Draw title
         gl.Color(colors.text)
-        font:Begin()
-        font:Print("Keybinding Configuration", window.x + PADDING, 
-                window.y + window.height - HEADER_SIZE - PADDING, HEADER_SIZE, "n")
-        font:End()
+
+        DrawBackground()
         
         widgetLifecycleRegistry:dispatchEvent('DrawScreen')
         
