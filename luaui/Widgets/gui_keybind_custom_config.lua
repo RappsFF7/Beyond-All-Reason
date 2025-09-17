@@ -2,6 +2,7 @@
 local widget = widget
 local VFS = VFS
 local LOG = LOG
+local gl = gl
 
 function widget:GetInfo()
     return {
@@ -58,14 +59,6 @@ local UiSelectHighlight = WG.FlowUI.Draw.SelectHighlight
 -- Font
 local font = WG['fonts'].getFont()
 
--- Forward declarations for dropdowns
-local hotkeyManager
-local bindingList
-local keySelector
-local commandSelector
-local extraSelector
-local addButton
-
 -- Mouse state
 local mx, my
 
@@ -80,6 +73,15 @@ local window = {
 }
 window.x = math.floor((vsx * centerPosX) - (window.width / 2))
 window.y = math.floor((vsy * centerPosY) - (window.height / 2))
+
+-- Widget-like
+local hotkeyManager
+local bindingList
+local keySelector
+local commandSelector
+local extraSelector
+local addButton
+local filterTextbox
 
 -- UI Elements state
 local backgroundGuishader
@@ -515,11 +517,34 @@ function BindingList.new(options)
     self.bindings = {}
     self.deleteButtons = {}
     self.onRemove = options.onRemove
+    self.filterText = ""
 
     local font = WG['fonts'].getFont()
 
     local function isButtonVisible(button)
         return button.py and button.py < 0 and button.py > -self.height
+    end
+
+    function self:setFilter(text)
+        self.filterText = text:lower()
+        self:updateFilteredBindings()
+    end
+
+    function self:updateFilteredBindings()
+        if self.filterText == "" then
+            self.filteredBindings = self.bindings
+        else
+            self.filteredBindings = {}
+            for _, binding in ipairs(self.bindings) do
+                if binding.boundWith:lower():find(self.filterText, 1, true) or
+                   binding.command:lower():find(self.filterText, 1, true) or
+                   (binding.extra and binding.extra:lower():find(self.filterText, 1, true)) then
+                    table.insert(self.filteredBindings, binding)
+                end
+            end
+        end
+        self.maxScrollOffset = math.max(self.minScrollOffset, (#self.filteredBindings * (BUTTON_HEIGHT + elementPadding)) - SCROLL_HEIGHT)
+        self.scrollOffset = math.min(self.scrollOffset, self.maxScrollOffset) -- Adjust scroll if needed
     end
 
     function self:setDimensions(x, y, width, height)
@@ -531,11 +556,11 @@ function BindingList.new(options)
     
     function self:setBindings(bindings)
         self.bindings = bindings
-        self.maxScrollOffset = math.max(self.minScrollOffset, (#bindings * (BUTTON_HEIGHT + elementPadding)) - SCROLL_HEIGHT)
+        self:updateFilteredBindings()
         
         -- Create/update delete buttons
         self.deleteButtons = {}
-        for i = 1, #bindings do
+        for i = 1, #self.filteredBindings do
             local button = UiButtonInteractable.new({
                 text = "Del" .. i,
                 color1 = colors.removeButton,
@@ -544,9 +569,9 @@ function BindingList.new(options)
             -- Fix: Call onClick through instance rather than as a function
             button:onClick(function()
                 if self.onRemove then
-                    self.onRemove(bindings[i].boundWith, bindings[i].command)
-                    -- Update max scroll offset
-                    self.maxScrollOffset = math.max(self.minScrollOffset, (#self.bindings * (BUTTON_HEIGHT + elementPadding)) - SCROLL_HEIGHT)
+                    local binding = self.filteredBindings[i]
+                    self.onRemove(binding.boundWith, binding.command)
+                    self.maxScrollOffset = math.max(self.minScrollOffset, (#self.filteredBindings * (BUTTON_HEIGHT + elementPadding)) - SCROLL_HEIGHT)
                 end
             end)
             self.deleteButtons[i] = button
@@ -558,7 +583,7 @@ function BindingList.new(options)
         gl.Translate(self.x, self.y + self.height, 0)
         gl.Scissor(self.x, self.y, self.width, self.height)
     
-        for i, binding in ipairs(self.bindings) do
+        for i, binding in ipairs(self.filteredBindings) do
             local yPos = -((i-1) * (BUTTON_HEIGHT + elementPadding)) + self.scrollOffset
             
             if yPos > -SCROLL_HEIGHT and yPos < BUTTON_HEIGHT then
@@ -740,6 +765,7 @@ local function InitializeUI()
         keySelector.selectedValue = "New Key"
         commandSelector.selectedValue = "New Command"
         extraSelector.text = "Command Extras"
+        filterTextbox.text = "Filter..."
     end)
     
     -- Add hotkey buttons
@@ -787,8 +813,27 @@ local function InitializeUI()
         window.x + elementPadding,
         window.y + elementPadding + INPUT_HEIGHT + elementPadding + HEADER_SIZE + elementPadding,
         window.width - 2*elementPadding,
-        SCROLL_HEIGHT
+        SCROLL_HEIGHT - INPUT_HEIGHT - elementPadding  -- Reduce height to make room for filter
     )
+
+    -- Add filter textbox at the bottom
+    filterTextbox = UiTextboxInteractable.new({
+        initialValue = 'Filter...',
+        px = window.x + elementPadding,
+        py = window.y + elementPadding,
+        sx = window.x + window.width - 2*elementPadding,
+        sy = window.y + elementPadding + INPUT_HEIGHT,
+        onClick = function()
+            if filterTextbox.text == "Filter..." then
+                filterTextbox.text = ""
+            end
+        end,
+        onChange = function(text)
+            if bindingList then
+                bindingList:setFilter(text)
+            end
+        end
+    })
 end
 -- #endregion
 
@@ -820,6 +865,7 @@ function widget:DrawScreen()
         commandSelector:draw()
         extraSelector:draw()
         addButton:draw()
+        filterTextbox:draw()
         
     end, function()
         gl.PopMatrix()
@@ -868,11 +914,16 @@ function widget:MousePress(x, y, button)
     if bindingList:handleMousePress(x, y) then
         return true
     end
+
+    if filterTextbox:handleMousePress(x, y, button) then
+        return true
+    end
     
-    -- Close dropdowns when clicking elsewhere
+    -- Make inactive when clicking elsewhere
     keySelector.isActive = false
     commandSelector.isActive = false
     extraSelector.isActive = false
+    filterTextbox.isActive = false
 
     return false
 end
@@ -890,10 +941,11 @@ function widget:KeyPress(key, mods, isRepeat, label)
             keySelector.selectedValue = "New Key"
             return true
         end
-        if keySelector.isActive or commandSelector.isActive or extraSelector.isActive then
+        if keySelector.isActive or commandSelector.isActive or extraSelector.isActive or filterTextbox.isActive then
             keySelector.isActive = false
             commandSelector.isActive = false
             extraSelector.isActive = false
+            filterTextbox.isActive = false
             return true
         end
         widget:Toggle()
@@ -914,6 +966,10 @@ function widget:KeyPress(key, mods, isRepeat, label)
     if extraSelector.isActive then
         return extraSelector:handleKeyPress(key)
     end
+
+    if filterTextbox.isActive then
+        return filterTextbox:handleKeyPress(key)
+    end
     
     return false
 end
@@ -927,6 +983,10 @@ function widget:TextInput(char)
     
     if extraSelector.isActive then
         return extraSelector:handleTextInput(char)
+    end
+
+    if filterTextbox.isActive then
+        return filterTextbox:handleTextInput(char)
     end
     
     return false
