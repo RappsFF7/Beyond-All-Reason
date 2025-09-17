@@ -329,7 +329,7 @@ function KeySelector.new(options)
     })
     button:onClick(function()
         if not self.isActive then
-            self:SetActive()
+            self:SetActive(true)
             return true
         end
     end)
@@ -348,14 +348,19 @@ function KeySelector.new(options)
     function self:MousePress(x, y)
         local isClicked = button:MousePress(x, y)
         if not isClicked then
-            self.isActive = false
+            self:SetActive(false)
         end
     end
     
-    function self:SetActive()
-        self.isActive = true
-        self.selectedValue = "Press a key..."
-        button.text = "Press a key..."
+    function self:SetActive(isActive)
+        self.isActive = isActive
+        if isActive then
+            self.selectedValue = "Press a key..."
+            button.text = "Press a key..."
+        elseif self.selectedValue == "Press a key..." then
+            self.selectedValue = options.initialValue or "New Key"
+            button.text = options.initialValue or "New Key"
+        end
     end
     
     function self:KeyPress(key, mods)
@@ -857,6 +862,7 @@ local function InitializeUI()
         math.floor(window.width * 1/3) - 2*elementPadding - PADDING,
         INPUT_HEIGHT
     )
+    widgetLifecycleRegistry:register(keySelector)
 
     -- Command selector
     commandSelector = CommandSelector.new({
@@ -869,6 +875,7 @@ local function InitializeUI()
         math.floor(window.width * 1/3) - elementPadding,
         INPUT_HEIGHT
     )
+    widgetLifecycleRegistry:register(commandSelector)
     
     -- Extra command selector
     extraSelector = UiTextboxInteractable.new({
@@ -883,6 +890,7 @@ local function InitializeUI()
             end
         end
     })
+    widgetLifecycleRegistry:register(extraSelector)
 
     -- Add button
     addButton = UiButtonInteractable.new({
@@ -899,6 +907,7 @@ local function InitializeUI()
         extraSelector.text = "New Command Extras"
         filterTextbox.text = "Filter..."
     end)
+    widgetLifecycleRegistry:register(addButton)
 
     -- Create binding list
     bindingList = BindingList.new({
@@ -912,6 +921,7 @@ local function InitializeUI()
         window.width - 2*elementPadding - 2*PADDING,
         window.height - 4*elementPadding - HEADER_SIZE - FOOTER_SIZE - 4*PADDING
     )
+    widgetLifecycleRegistry:register(bindingList)
 
     -- Add filter textbox at the bottom
     filterTextbox = UiTextboxInteractable.new({
@@ -931,13 +941,6 @@ local function InitializeUI()
             end
         end
     })
-
-    -- Register all UI components
-    widgetLifecycleRegistry:register(keySelector)
-    widgetLifecycleRegistry:register(commandSelector)
-    widgetLifecycleRegistry:register(extraSelector)
-    widgetLifecycleRegistry:register(addButton)
-    widgetLifecycleRegistry:register(bindingList)
     widgetLifecycleRegistry:register(filterTextbox)
 end
 -- #endregion
