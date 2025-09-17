@@ -57,7 +57,7 @@ local UiSelector = WG.FlowUI.Draw.Selector
 local UiSelectHighlight = WG.FlowUI.Draw.SelectHighlight
 
 -- Font
-local font = WG['fonts'].getFont()
+local font
 
 -- Mouse state
 local mx, my
@@ -992,13 +992,6 @@ function widget:TextInput(char)
     return false
 end
 
-function widget:IsAbove(x, y)
-    if not show then return false end
-    
-    return x > window.x and x < window.x + window.width and
-           y > window.y and y < window.y + window.height
-end
-
 function widget:Toggle()
     show = not show
     if show then
@@ -1016,6 +1009,8 @@ end
 
 function widget:Initialize()
     WidgetPCall(function()
+        font = WG['fonts'].getFont()
+        
         InitializeUI()
         
         -- Register toggle hotkey
