@@ -319,17 +319,17 @@ KeySelector.__index = KeySelector
 function KeySelector.new(options)
     local self = setmetatable(options, KeySelector)
 
-    self.isCapturing = false
+    self.isActive = false
 
     local button = UiButtonInteractable.new({
         tl = 1, tr = 1, bl = 1, br = 1,
         ptl = 1, ptr = 1, pbl = 1, pbr = 1,
-        color1 = self.isCapturing and colors.buttonActive or colors.buttonBackground,
+        color1 = self.isActive and colors.buttonActive or colors.buttonBackground,
         text = options.initialValue or "New Key"
     })
     button:onClick(function()
-        if not self.isCapturing then
-            self:startCapture()
+        if not self.isActive then
+            self:SetActive()
             return true
         end
     end)
@@ -348,18 +348,18 @@ function KeySelector.new(options)
     function self:MousePress(x, y)
         local isClicked = button:MousePress(x, y)
         if not isClicked then
-            self.isCapturing = false
+            self.isActive = false
         end
     end
     
-    function self:startCapture()
-        self.isCapturing = true
+    function self:SetActive()
+        self.isActive = true
         self.selectedValue = "Press a key..."
         button.text = "Press a key..."
     end
     
     function self:KeyPress(key, mods)
-        if not self.isCapturing then return false end
+        if not self.isActive then return false end
         
         local modstring = ""
         if Spring.GetModKeyState() then
@@ -373,7 +373,7 @@ function KeySelector.new(options)
         if keySymbol then
             self.selectedValue = modstring .. keySymbol
             button.text = modstring .. keySymbol
-            self.isCapturing = false
+            self.isActive = false
             if self.onChange then self.onChange(self.selectedValue) end
             return true
         end
@@ -410,7 +410,7 @@ function CommandSelector.new(options)
     button:onClick(function()
         self.isActive = not self.isActive
         if self.isActive then
-            self.filter = ""
+            self.filter = "Search..."
         end
     end)
 
@@ -426,7 +426,7 @@ function CommandSelector.new(options)
     end
 
     function self:updateFilteredOptions()
-        if self.filter == "" then
+        if self.filter == "" or self.filter == "Search..." then
             return self.options
         end
         
@@ -530,6 +530,10 @@ function CommandSelector.new(options)
 
     function self:TextInput(char)
         if not self.isActive then return false end
+
+        if self.filter == "Search..." then
+            self.filter = ""
+        end
         
         self.filter = self.filter .. char
         return true
