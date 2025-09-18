@@ -168,7 +168,8 @@ UiButtonInteractable.__index = UiButtonInteractable
 
 --[[
     px, py, sx, sy,  tl, tr, br, bl,  ptl, ptr, pbr, pbl,  opacity, color1, color2, bgpadding, glossMult,
-    text
+    text - Displayed text,
+    tranX - Set to glTransform X, tranY - Set to glTransform Y
 ]]--
 function UiButtonInteractable.new(options)
     local self = setmetatable(options or {}, UiButtonInteractable)
@@ -176,6 +177,14 @@ function UiButtonInteractable.new(options)
     self.onClickCallback = nil -- Store callback as instance variable
     
     local font = WG['fonts'].getFont()
+
+    local function isInRect(x, y)
+        return math_isInRect(
+            x, y,
+            self.px + (self.tranX or 0), self.py + (self.tranY or 0),
+            self.sx + (self.tranX or 0), self.sy + (self.tranY or 0)
+        )
+    end
     
     function self:DrawScreen()
         -- Draw button
@@ -201,7 +210,7 @@ function UiButtonInteractable.new(options)
     end
 
     function self:MouseMove(x, y, dx, dy, button)
-        if math_isInRect(x, y, self.px, self.py, self.sx, self.sy) then
+        if isInRect(x, y) then
             self.state = 'hover'
         else
             if self.state == 'hover' then
@@ -215,7 +224,7 @@ function UiButtonInteractable.new(options)
             return false
         end
 
-        if math_isInRect(x, y, self.px, self.py, self.sx, self.sy) then
+        if isInRect(x, y) then
             self.state = 'active'
             if self.onClickCallback then
                self.onClickCallback()
@@ -227,7 +236,7 @@ function UiButtonInteractable.new(options)
     end
 
     function self:MouseRelease(x, y, button)
-        if not math_isInRect(x, y, self.px, self.py, self.sx, self.sy) then
+        if not isInRect(x, y) then
             self.state = ''
         end
     end
@@ -244,7 +253,8 @@ UiTextboxInteractable.__index = UiTextboxInteractable
 
 --[[
     px, py, sx, sy,  tl, tr, br, bl,  ptl, ptr, pbr, pbl,  opacity, color1, color2, bgpadding, glossMult,
-    text
+    text - Displayed text,
+    tranX - Set to glTransform X, tranY - Set to glTransform Y
 ]]--
 function UiTextboxInteractable.new(options)
     local self = setmetatable(options, UiTextboxInteractable)
@@ -259,7 +269,8 @@ function UiTextboxInteractable.new(options)
         px = self.px, py = self.py, sx = self.sx, sy = self.sy,
         tl = 1, tr = 1, bl = 1, br = 1,
         ptl = 1, ptr = 1, pbl = 1, pbr = 1,
-        text = self.text
+        text = self.text,
+        tranX = self.tranX, tranY = self.tranY
     })
 
     function self:DrawScreen()
@@ -760,7 +771,8 @@ function BindingList.new(options)
                 
                 -- Position and draw delete button
                 local deleteButton = self.deleteButtons[i]
-                -- The button is positioned relative to the binding list's coordinate space
+                deleteButton.tranX = self.x
+                deleteButton.tranY = self.y + self.height
                 deleteButton.px = self.width - 55
                 deleteButton.py = yPos + elementPadding
                 deleteButton.sx = self.width - 15
@@ -796,17 +808,10 @@ function BindingList.new(options)
     end
     
     function self:MousePress(x, y)
-        -- Convert global coordinates to local binding list coordinates
-        local localX = x - self.x
-        local localY = y - self.y
-
-        -- Get button y (because we draw from the top down)
-        local buttonY = localY - self.height
-        
         -- Check all visible buttons if they are clicked
-        for index, button in ipairs(self.deleteButtons) do
+        for _, button in ipairs(self.deleteButtons) do
             if isButtonVisible(button) then
-                if button:MousePress(localX, buttonY, nil, true) then
+                if button:MousePress(x, y, nil, true) then
                     return true
                 end
             end
