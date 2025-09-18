@@ -823,9 +823,10 @@ HotkeyManager.__index = HotkeyManager
 function HotkeyManager.new(options)
     local self = setmetatable(options or {}, HotkeyManager)
 
+    self.file = "uikeys.txt"
     self.currentBindings = {}
-    self.availableCommands = {}
     self.availableKeys = {}
+    self.availableCommands = {}
 
     function self:LoadHotkeyConfigs()
         -- Load available commands and keys from hotkey config files
@@ -881,11 +882,31 @@ function HotkeyManager.new(options)
         end
     end
 
+    function self:SaveCurrentBindings()
+        local file = io.open(self.file, "w")
+
+        if not file then
+            log("Failed to open keybind file: " .. self.file)
+            return
+        end
+
+        local hotkeyBindList = {}
+        for _, binding in pairs(self.currentBindings) do
+            table.insert(hotkeyBindList, 'bind ' .. binding.boundWith .. " " .. binding.command .. " " .. binding.extra)
+        end
+
+        local hotkeyBindString = table.concat(hotkeyBindList, "\n")
+
+        file:write(hotkeyBindString)
+        file:close()
+    end
+
     function self:SaveBinding(key, command, extras)
         if key and command and key ~= "" and command ~= "" then
             Spring.SendCommands({"bind " .. key .. " " .. command .. " " .. extras})
-            --log('Binding added: ', key, command)
             self:LoadCurrentBindings()
+            self:SaveCurrentBindings()
+            log('Saved: ', self.file)
         end
     end
 
@@ -895,6 +916,8 @@ function HotkeyManager.new(options)
             Spring.SendCommands({"unbind " .. key .. " " .. command .. " " .. extras})
             log('Binding removed: ', key, command, extras)
             self:LoadCurrentBindings()
+            self:SaveCurrentBindings()
+            log('Saved: ', self.file)
         end
     end
 

@@ -3009,7 +3009,7 @@ function init()
 		{ id = "keybindings_customconfigure", group = "control", category = types.basic, name = Spring.I18N('ui.settings.option.keybindings_customconfigure'), type = "click", description = Spring.I18N('ui.settings.option.keybindings_customconfigure_descr'),
 			onclick = function()
 				if WG['keybind_custom_config'] then
-					WG['keybind_custom_config'].Toggle()
+					WG['keybind_custom_config']:Toggle()
 					WG['options'].toggle()
 				end
 		  end,
@@ -6410,6 +6410,7 @@ function init()
 	end
 
 	if Spring.GetConfigString("KeybindingFile") ~= "uikeys.txt" then
+		options[getOptionByID('keybindings_customconfigure')] = nil
 		options[getOptionByID('gridmenu')] = nil
 	end
 
