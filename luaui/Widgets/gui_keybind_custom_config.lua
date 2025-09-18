@@ -334,6 +334,53 @@ function KeySelector.new(options)
         end
     end)
 
+    local function GetSpringKeySymbol(key)
+        local function MatchAnyRaw(text, rawKeyArray)
+            for k, _ in pairs(rawKeyArray) do
+                if text == k then
+                    return k
+                end
+            end
+            return false
+        end
+
+        local function MatchAny(text, patterns)
+            for _, pattern in ipairs(patterns) do
+                local match = string.match(text, pattern)
+                if match then
+                    return match
+                end
+            end
+            return false
+        end
+
+        local keySymbol = Spring.GetKeySymbol(key)
+
+        local rawKeyTranslations = {
+            ["96"] = "sc_`" -- backquote
+        }
+        local ignoredKeysPatterns = {"alt","ctrl","shift","meta"}
+        local scKeysPatterns = {"[a-zA-Z-=,.;'[%]]"}
+
+        local transKey = MatchAnyRaw(tostring(key), rawKeyTranslations)
+        if transKey then
+            return rawKeyTranslations[transKey]
+        end
+   
+        local ignoreKey = MatchAny(keySymbol, ignoredKeysPatterns)
+        if ignoreKey then
+            return nil
+        end
+
+        local scKey = MatchAny(keySymbol, scKeysPatterns)
+        if scKey then
+            -- Is sc_ needed? It seems to work with just the character
+            return "sc_" .. keySymbol
+        end
+
+        return keySymbol
+    end
+
     function self:setDimensions(x, y, width, height)
         button.px = x
         button.py = y
@@ -364,22 +411,25 @@ function KeySelector.new(options)
     end
     
     function self:KeyPress(key, mods)
+        -- If the key is already bound, that binding may take control before we receive the keypress
+
         if not self.isActive then return false end
         
         local modstring = ""
-        if Spring.GetModKeyState() then
-            local alt, ctrl, meta, shift = Spring.GetModKeyState()
-            if alt then modstring = modstring .. "Alt+" end
-            if ctrl then modstring = modstring .. "Ctrl+" end
-            if shift then modstring = modstring .. "Shift+" end
-        end
+        if mods.alt then modstring = modstring .. "Alt+" end
+        if mods.ctrl then modstring = modstring .. "Ctrl+" end
+        if mods.shift then modstring = modstring .. "Shift+" end
+        if mods.meta then modstring = modstring .. "Meta+" end
+        if mods.alt and mods.ctrl and mods.shift then modstring = "Any+" end
         
-        local keySymbol = Spring.GetKeySymbol(key)
-        if keySymbol then
-            self.selectedValue = modstring .. keySymbol
-            button.text = modstring .. keySymbol
+        -- This doesn't support key sequences (like tapping a twice: sc_a,sc_a command)
+        local springSymbol = GetSpringKeySymbol(key)
+        if springSymbol then
+            self.selectedValue = modstring .. springSymbol
+            button.text = modstring .. springSymbol
             self.isActive = false
             if self.onChange then self.onChange(self.selectedValue) end
+
             return true
         end
         return false
