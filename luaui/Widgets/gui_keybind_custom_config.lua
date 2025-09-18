@@ -86,6 +86,7 @@ local commandSelector
 local extraSelector
 local addButton
 local filterTextbox
+local defaultButton
 
 local widgetLifecycleRegistry
 
@@ -823,14 +824,26 @@ HotkeyManager.__index = HotkeyManager
 function HotkeyManager.new(options)
     local self = setmetatable(options or {}, HotkeyManager)
 
+    local defaultFile = "luaui/configs/hotkeys/grid_keys.txt"
+
     self.file = "uikeys.txt"
     self.currentBindings = {}
     self.availableKeys = {}
     self.availableCommands = {}
 
+    function self:LoadDefaultConfig()
+        Spring.SetConfigString("KeybindingFile", defaultFile)
+
+        if WG['bar_hotkeys'] and WG['bar_hotkeys'].reloadBindings then
+            WG['bar_hotkeys'].reloadBindings()
+        end
+
+        self:LoadCurrentBindings()
+    end
+
     function self:LoadHotkeyConfigs()
         -- Load available commands and keys from hotkey config files
-        local gridKeys = VFS.LoadFile("luaui/configs/hotkeys/grid_keys.txt")
+        local gridKeys = VFS.LoadFile(defaultFile)
         if gridKeys then
             for line in gridKeys:gmatch("[^\r\n]+") do
                 if line:match("^bind%s+") then
@@ -913,7 +926,8 @@ function HotkeyManager.new(options)
     function self:RemoveBinding(key, command, extras)
         if key and command then
             -- TODO this fails on sequenced bindings (like sc_a,sc_a command). Is this a bug in Spring?
-            Spring.SendCommands({"unbind " .. key .. " " .. command .. " " .. extras})
+            -- TODO this deletes all entries for key/command, unbind doesn't understand extras (bug reported in GitHub)
+            Spring.SendCommands({"unbind " .. key .. " " .. command})
             log('Binding removed: ', key, command, extras)
             self:LoadCurrentBindings()
             self:SaveCurrentBindings()
@@ -954,6 +968,7 @@ local function DrawBackground()
 
     -- Footer
     UiElement(window.x, window.y, window.x + window.width * 1/3 + PADDING, window.y + FOOTER_SIZE + 2*PADDING + elementPadding, 1,1,1,1, 1)
+    UiElement(window.x + window.width * 2.5/3, window.y, window.x + window.width, window.y + FOOTER_SIZE + 2*PADDING + elementPadding, 1,1,1,1, 1)
 end
 
 local function InitializeUI()
@@ -1057,6 +1072,20 @@ local function InitializeUI()
         end
     })
     widgetLifecycleRegistry:register(filterTextbox)
+
+    -- Default button
+    widgetLifecycleRegistry:unregister(defaultButton)
+    defaultButton = UiButtonInteractable.new({
+        px = window.x + window.width - elementPadding + PADDING - 120,
+        py = window.y + 2*elementPadding,
+        sx = window.x + window.width - 2*elementPadding - PADDING,
+        sy = window.y + 2*elementPadding + INPUT_HEIGHT,
+        text = 'Default'
+    })
+    defaultButton:onClick(function()
+        hotkeyManager:LoadDefaultConfig()
+    end)
+    widgetLifecycleRegistry:register(defaultButton)
 end
 -- #endregion
 
