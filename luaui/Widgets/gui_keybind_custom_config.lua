@@ -741,58 +741,61 @@ function BindingList.new(options)
     
     function self:DrawScreen()
         gl.PushMatrix()
-        gl.Translate(self.x, self.y + self.height, 0)
-        gl.Scissor(self.x, self.y, self.width, self.height)
-        
-        -- Draw header
-        font:Begin()
-        font:Print("Keys", 0, -HEADER_SIZE, HEADER_SIZE, "n")
-        font:Print("Command", self.width * 1/3, -HEADER_SIZE, HEADER_SIZE, "n")
-        font:Print("Command Extras", self.width * 2/3, -HEADER_SIZE, HEADER_SIZE, "n")
-        font:End()
-        
-        -- Draw table
-        gl.Scissor(self.x, self.y + PADDING, self.width, self.height - HEADER_SIZE - PADDING*2)
-        for i, binding in ipairs(self.filteredBindings) do
-            local yPos = -(i * (BUTTON_HEIGHT + elementPadding)) - HEADER_SIZE + self.scrollOffset
+        WidgetPCall(function()
+            gl.Translate(self.x, self.y + self.height, 0)
+            gl.Scissor(self.x, self.y, self.width, self.height)
             
-            if yPos > -(self.height + BUTTON_HEIGHT) and yPos < BUTTON_HEIGHT then
-                -- Draw binding row background
-                UiElement(0, yPos, self.width - 60, yPos + BUTTON_HEIGHT, 0,0,0,0, 1)
+            -- Draw header
+            font:Begin()
+            font:Print("Keys", 0, -HEADER_SIZE, HEADER_SIZE, "n")
+            font:Print("Command", self.width * 1/3, -HEADER_SIZE, HEADER_SIZE, "n")
+            font:Print("Command Extras", self.width * 2/3, -HEADER_SIZE, HEADER_SIZE, "n")
+            font:End()
+            
+            -- Draw table
+            gl.Scissor(self.x, self.y + PADDING, self.width, self.height - HEADER_SIZE - PADDING*2)
+            for i, binding in ipairs(self.filteredBindings) do
+                local yPos = -(i * (BUTTON_HEIGHT + elementPadding)) - HEADER_SIZE + self.scrollOffset
                 
-                -- Draw text
-                font:Begin()
-                font:SetTextColor(1,1,1,1)
-                font:SetOutlineColor(0,0,0,0.4)
-                font:Print(binding.boundWith or "", elementPadding, yPos + elementPadding, FONT_SIZE, "n")
-                font:Print(binding.command or "", self.width * (1/3), yPos + elementPadding, FONT_SIZE, "n")
-                font:Print(binding.extra or "", self.width * (2/3), yPos + elementPadding, FONT_SIZE, "n")
-                font:End()
-                
-                -- Position and draw delete button
-                local deleteButton = self.deleteButtons[i]
-                deleteButton.tranX = self.x
-                deleteButton.tranY = self.y + self.height
-                deleteButton.px = self.width - 55
-                deleteButton.py = yPos + elementPadding
-                deleteButton.sx = self.width - 15
-                deleteButton.sy = yPos + BUTTON_HEIGHT - elementPadding
-                deleteButton:DrawScreen()
+                if yPos > -(self.height + BUTTON_HEIGHT) and yPos < BUTTON_HEIGHT then
+                    -- Draw binding row background
+                    UiElement(0, yPos, self.width - 60, yPos + BUTTON_HEIGHT, 0,0,0,0, 1)
+                    
+                    -- Draw text
+                    font:Begin()
+                    font:SetTextColor(1,1,1,1)
+                    font:SetOutlineColor(0,0,0,0.4)
+                    font:Print(binding.boundWith or "", elementPadding, yPos + elementPadding, FONT_SIZE, "n")
+                    font:Print(binding.command or "", self.width * (1/3), yPos + elementPadding, FONT_SIZE, "n")
+                    font:Print(binding.extra or "", self.width * (2/3), yPos + elementPadding, FONT_SIZE, "n")
+                    font:End()
+                    
+                    -- Position and draw delete button
+                    local deleteButton = self.deleteButtons[i]
+                    deleteButton.tranX = self.x
+                    deleteButton.tranY = self.y + self.height
+                    deleteButton.px = self.width - 55
+                    deleteButton.py = yPos + elementPadding
+                    deleteButton.sx = self.width - 15
+                    deleteButton.sy = yPos + BUTTON_HEIGHT - elementPadding
+                    deleteButton:DrawScreen()
+                end
             end
-        end
-
-        -- Draw scrollbar
-        WG.FlowUI.Draw.Scroller(
-            self.width - 7,
-            self.height - HEADER_SIZE - PADDING - 70,
-            self.width,
-            -HEADER_SIZE - PADDING,
-            self.maxScrollOffset,
-            -self.scrollOffset
-        )
-        
-        gl.Scissor(false)
-        gl.PopMatrix()
+    
+            -- Draw scrollbar
+            WG.FlowUI.Draw.Scroller(
+                self.width - 7,
+                self.height - HEADER_SIZE - PADDING - 70,
+                self.width,
+                -HEADER_SIZE - PADDING,
+                self.maxScrollOffset,
+                -self.scrollOffset
+            )
+            
+            gl.Scissor(false)
+        end, function()
+            gl.PopMatrix()
+        end)
     end
     
     function self:MouseWheel(up, value)
