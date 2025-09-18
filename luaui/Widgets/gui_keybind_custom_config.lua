@@ -744,6 +744,10 @@ function BindingList.new(options)
         WidgetPCall(function()
             gl.Translate(self.x, self.y + self.height, 0)
             gl.Scissor(self.x, self.y, self.width, self.height)
+
+            local mouseX, mouseY = Spring.GetMouseState()
+            local relMouseX = mouseX - self.x
+            local relMouseY = mouseY - (self.y + self.height)
             
             -- Draw header
             font:Begin()
@@ -757,10 +761,13 @@ function BindingList.new(options)
             for i, binding in ipairs(self.filteredBindings) do
                 local yPos = -(i * (BUTTON_HEIGHT + elementPadding)) - HEADER_SIZE + self.scrollOffset
                 
+                -- Only draw if visible
                 if yPos > -(self.height + BUTTON_HEIGHT) and yPos < BUTTON_HEIGHT then
-                    -- Draw binding row background
-                    UiElement(0, yPos, self.width - 60, yPos + BUTTON_HEIGHT, 0,0,0,0, 1)
-                    
+                    -- Draw binding row highlight
+                    if math_isInRect(relMouseX, relMouseY, 0, yPos, self.width, yPos + BUTTON_HEIGHT) then
+                        UiElement(0, yPos, self.width, yPos + BUTTON_HEIGHT, 0,0,0,0, 0,0,0,0, 0, colors.buttonHover)
+                    end
+
                     -- Draw text
                     font:Begin()
                     font:SetTextColor(1,1,1,1)
@@ -972,7 +979,7 @@ local function DrawBackground()
     font:End()
     
     -- Main window
-    UiElement(window.x, window.y + FOOTER_SIZE + 2*PADDING, window.x + window.width, window.y + window.height, 1,1,1,1, 1)
+    UiElement(window.x, window.y + FOOTER_SIZE + 2*PADDING, window.x + window.width, window.y + window.height, 1,1,1,1, 1, nil, nil, nil, 0.85)
 
     -- Footer
     UiElement(window.x, window.y, window.x + window.width * 1/3 + PADDING, window.y + FOOTER_SIZE + 2*PADDING + elementPadding, 1,1,1,1, 1)
