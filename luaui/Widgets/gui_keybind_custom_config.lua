@@ -319,17 +319,33 @@ KeySelector.__index = KeySelector
 function KeySelector.new(options)
     local self = setmetatable(options, KeySelector)
 
+    self.text = options.initialText or 'New Key'
+    self.value = ''
     self.isActive = false
+    self.isAppend = false
 
     local button = UiButtonInteractable.new({
         tl = 1, tr = 1, bl = 1, br = 1,
         ptl = 1, ptr = 1, pbl = 1, pbr = 1,
         color1 = self.isActive and colors.buttonActive or colors.buttonBackground,
-        text = options.initialValue or "New Key"
+        text = self.text
     })
     button:onClick(function()
         if not self.isActive then
             self:SetActive(true)
+            return true
+        end
+    end)
+
+    local buttonAdd = UiButtonInteractable.new({
+        tl = 1, tr = 1, bl = 1, br = 1,
+        ptl = 1, ptr = 1, pbl = 1, pbr = 1,
+        color1 = self.isActive and colors.buttonActive or colors.buttonBackground,
+        text = "Key++"
+    })
+    buttonAdd:onClick(function()
+        if not self.isActive then
+            self:SetActive(true, true)
             return true
         end
     end)
@@ -384,29 +400,40 @@ function KeySelector.new(options)
     function self:setDimensions(x, y, width, height)
         button.px = x
         button.py = y
-        button.sx = x + width
+        button.sx = x + width * (3/4)
         button.sy = y + height
+
+        buttonAdd.px = x + width * (3/4) + PADDING
+        buttonAdd.py = y
+        buttonAdd.sx = x + width
+        buttonAdd.sy = y + height
     end
     
     function self:DrawScreen()
+        button.text = self.text
         button:DrawScreen()
+        buttonAdd:DrawScreen()
     end
     
     function self:MousePress(x, y)
         local isClicked = button:MousePress(x, y)
-        if not isClicked then
+        local isClickedAdd = buttonAdd:MousePress(x, y)
+        if not isClicked and not isClickedAdd then
             self:SetActive(false)
         end
     end
     
-    function self:SetActive(isActive)
+    function self:SetActive(isActive, isAppend)
         self.isActive = isActive
+        self.isAppend = isAppend or false
         if isActive then
-            self.selectedValue = "Press a key..."
-            button.text = "Press a key..."
-        elseif self.selectedValue == "Press a key..." then
-            self.selectedValue = options.initialValue or "New Key"
-            button.text = options.initialValue or "New Key"
+            if not self.isAppend then
+                self.value = ""
+            end
+            self.text = "Press a key..."
+        elseif self.text == "Press a key..." then
+            self.value = options.initialValue or ""
+            self.text = options.initialText or "New Key"
         end
     end
     
@@ -422,13 +449,18 @@ function KeySelector.new(options)
         if mods.meta then modstring = modstring .. "Meta+" end
         if mods.alt and mods.ctrl and mods.shift then modstring = "Any+" end
         
-        -- This doesn't support key sequences (like tapping a twice: sc_a,sc_a command)
         local springSymbol = GetSpringKeySymbol(key)
         if springSymbol then
-            self.selectedValue = modstring .. springSymbol
-            button.text = modstring .. springSymbol
+            if self.isAppend then
+                self.value = self.value .. ',' .. modstring .. springSymbol
+                self.text = self.value
+            else
+                self.value = modstring .. springSymbol
+                self.text = modstring .. springSymbol
+            end
+
             self.isActive = false
-            if self.onChange then self.onChange(self.selectedValue) end
+            if self.onChange then self.onChange(self.value) end
 
             return true
         end
@@ -452,7 +484,7 @@ function CommandSelector.new(options)
     self.options = options.options or {}
     self.onChange = options.onChange
     self.filter = ""
-    
+
     local font = WG['fonts'].getFont()
 
     -- UiSelector
@@ -670,11 +702,11 @@ function BindingList.new(options)
         self.width = width
         self.height = height
     end
-    
+
     function self:setBindings(bindings)
         self.bindings = bindings
         self:updateFilteredBindings()
-        
+
         -- Create/update delete buttons
         self.deleteButtons = {}
         for i = 1, #self.filteredBindings do
@@ -687,7 +719,7 @@ function BindingList.new(options)
             button:onClick(function()
                 if self.onRemove then
                     local binding = self.filteredBindings[i]
-                    self.onRemove(binding.boundWith, binding.command)
+                    self.onRemove(binding.boundWith, binding.command, binding.extra)
                     self.maxScrollOffset = math.max(self.minScrollOffset, (#self.filteredBindings * (BUTTON_HEIGHT + elementPadding)) + HEADER_SIZE + PADDING - self.height)
                 end
             end)
@@ -852,14 +884,16 @@ function HotkeyManager.new(options)
     function self:SaveBinding(key, command, extras)
         if key and command and key ~= "" and command ~= "" then
             Spring.SendCommands({"bind " .. key .. " " .. command .. " " .. extras})
+            --log('Binding added: ', key, command)
             self:LoadCurrentBindings()
         end
     end
 
-    function self:RemoveBinding(key, command)
+    function self:RemoveBinding(key, command, extras)
         if key and command then
-            Spring.SendCommands({"unbind " .. key .. " " .. command})
-            log('Binding removed: ', key, command)
+            -- TODO this fails on sequenced bindings (like sc_a,sc_a command). Is this a bug in Spring?
+            Spring.SendCommands({"unbind " .. key .. " " .. command .. " " .. extras})
+            log('Binding removed: ', key, command, extras)
             self:LoadCurrentBindings()
         end
     end
@@ -904,7 +938,7 @@ local function InitializeUI()
     
     -- Key selector
     keySelector = KeySelector.new({
-        initialValue = "New Key"
+        initialText = "New Key"
     })
     keySelector:setDimensions(
         window.x + elementPadding + PADDING,
@@ -951,8 +985,12 @@ local function InitializeUI()
         text = 'Add'
     })
     addButton:onClick(function()
-        hotkeyManager:SaveBinding(keySelector.selectedValue, commandSelector.selectedValue, extraSelector.text)
-        keySelector.selectedValue = "New Key"
+        local extra = extraSelector.text
+        if extra == "New Command Extras" then extra = "" end
+
+        hotkeyManager:SaveBinding(keySelector.value, commandSelector.selectedValue, extra)
+
+        keySelector.value = "New Key"
         commandSelector.selectedValue = "New Command"
         extraSelector.text = "New Command Extras"
         filterTextbox.text = "Filter..."
