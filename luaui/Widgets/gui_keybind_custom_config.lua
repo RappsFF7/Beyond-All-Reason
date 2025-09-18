@@ -934,9 +934,8 @@ local function DrawBackground()
 end
 
 local function InitializeUI()
-    hotkeyManager = HotkeyManager.new()
-    
     -- Key selector
+    widgetLifecycleRegistry:unregister(keySelector)
     keySelector = KeySelector.new({
         initialText = "New Key"
     })
@@ -949,6 +948,7 @@ local function InitializeUI()
     widgetLifecycleRegistry:register(keySelector)
 
     -- Command selector
+    widgetLifecycleRegistry:unregister(commandSelector)
     commandSelector = CommandSelector.new({
         initialValue = "New Command",
         options = {},  -- Will be populated from availableCommands
@@ -962,6 +962,7 @@ local function InitializeUI()
     widgetLifecycleRegistry:register(commandSelector)
     
     -- Extra command selector
+    widgetLifecycleRegistry:unregister(extraSelector)
     extraSelector = UiTextboxInteractable.new({
         initialValue = 'New Command Extras',
         px = window.x + math.floor(window.width * 2/3) + elementPadding,
@@ -977,6 +978,7 @@ local function InitializeUI()
     widgetLifecycleRegistry:register(extraSelector)
 
     -- Add button
+    widgetLifecycleRegistry:unregister(addButton)
     addButton = UiButtonInteractable.new({
         px = window.x + window.width - elementPadding + PADDING - 70,
         py = window.y + elementPadding + INPUT_HEIGHT + FOOTER_SIZE,
@@ -998,6 +1000,7 @@ local function InitializeUI()
     widgetLifecycleRegistry:register(addButton)
 
     -- Create binding list
+    widgetLifecycleRegistry:unregister(bindingList)
     bindingList = BindingList.new({
         onRemove = function(...) 
             hotkeyManager:RemoveBinding(...)
@@ -1012,6 +1015,7 @@ local function InitializeUI()
     widgetLifecycleRegistry:register(bindingList)
 
     -- Add filter textbox at the bottom
+    widgetLifecycleRegistry:unregister(filterTextbox)
     filterTextbox = UiTextboxInteractable.new({
         initialValue = 'Filter...',
         px = window.x + elementPadding + PADDING,
@@ -1124,24 +1128,27 @@ end
 
 function widget:Initialize()
     WidgetPCall(function()
+        -- Initialize default font
         font = WG['fonts'].getFont()
 
+        -- Initialize widget lifecycle registry
         widgetLifecycleRegistry = WidgetLifecycleRegistry.new()
         
+        -- Initialize UI
         InitializeUI()
         
-        -- Register toggle hotkey
+        -- Register widget toggle hotkey
         Spring.SendCommands({"bind f9 luaui keybind_custom_config_toggle"})
-        --Spring.Echo("Press F9 to toggle keybinding configuration")
-        
-        -- Add command handler
         widgetHandler:AddAction("keybind_custom_config_toggle", function()
             widget:Toggle()
         end, nil, "t")
         
+        -- Initialize hotkey manager
+        hotkeyManager = HotkeyManager.new()
         hotkeyManager:LoadHotkeyConfigs()
         hotkeyManager:LoadCurrentBindings()
     
+        -- Register widget in global table
         WG['keybind_custom_config'] = widget
     end)
 end
