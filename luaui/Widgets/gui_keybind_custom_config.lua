@@ -35,8 +35,8 @@ local colors = {
     windowBackground = {0, 0, 0, math.max(0.75, Spring.GetConfigFloat("ui_opacity", 0.7))},
     windowBackgroundGold1 = {77/255, 59/255, 37/255, math.max(0.75, Spring.GetConfigFloat("ui_opacity", 0.7))},
     windowBackgroundGold2 = {32/255, 24/255, 11/255, math.max(0.75, Spring.GetConfigFloat("ui_opacity", 0.7))},
-    buttonBackground = {0.15, 0.15, 0.15, 1},
-    buttonHover = {0.25, 0.25, 0.25, 1}, 
+    buttonBackground = {0.15, 0.15, 0.15, 0.3},
+    buttonHover = {0.25, 0.25, 0.25, 1},
     buttonActive = {0.3, 0.3, 0.3, 1},
     text = {1, 1, 1, 1},
     textGold = {171/255, 141/255, 107/255, 1},
@@ -173,9 +173,10 @@ UiButtonInteractable.__index = UiButtonInteractable
 ]]--
 function UiButtonInteractable.new(options)
     local self = setmetatable(options or {}, UiButtonInteractable)
-    self.state = ''
-    self.onClickCallback = nil -- Store callback as instance variable
-    
+
+    self.isActive = false
+    self.isHover = false
+   
     local font = WG['fonts'].getFont()
 
     local function isInRect(x, y)
@@ -192,8 +193,8 @@ function UiButtonInteractable.new(options)
             self.px, self.py, self.sx, self.sy,
             self.tl, self.tr, self.br, self.bl,
             self.ptl, self.ptr, self.pbr, self.pbl, self.opacity,
-            self.state == 'active' and colors.buttonActive or
-            self.state == 'hover' and colors.buttonHover or
+            self.isActive and colors.buttonActive or
+            self.isHover and colors.buttonHover or
             colors.buttonBackground
         )
         
@@ -210,13 +211,7 @@ function UiButtonInteractable.new(options)
     end
 
     function self:MouseMove(x, y, dx, dy, button)
-        if isInRect(x, y) then
-            self.state = 'hover'
-        else
-            if self.state == 'hover' then
-                self.state = ''
-            end
-        end
+        self.isHover = isInRect(x, y)
     end
     
     function self:MousePress(x, y, button)
@@ -225,11 +220,18 @@ function UiButtonInteractable.new(options)
         end
 
         if isInRect(x, y) then
-            self.state = 'active'
-            if self.onClickCallback then
-               self.onClickCallback()
+            self.isActive = true
+            if self.onClick then
+               self.onClick()
             end
             return true
+        end
+
+        if self.isActive then
+            self.isActive = false
+            if self.onBlur then
+                self.onBlur()
+            end
         end
 
         return false
@@ -237,12 +239,11 @@ function UiButtonInteractable.new(options)
 
     function self:MouseRelease(x, y, button)
         if not isInRect(x, y) then
-            self.state = ''
+            self.isActive = false
+            if self.onBlur then
+                self.onBlur()
+            end
         end
-    end
-
-    function self:onClick(func)
-        self.onClickCallback = func
     end
 
     return self
@@ -258,10 +259,9 @@ UiTextboxInteractable.__index = UiTextboxInteractable
 ]]--
 function UiTextboxInteractable.new(options)
     local self = setmetatable(options, UiTextboxInteractable)
+
     self.isActive = false
-    self.onClick = options.onClick
-    self.onChange = options.onChange
-    self.text = options.initialValue or ""
+    self.text = options.placeholder or ""
     
     local font = WG['fonts'].getFont()
 
@@ -278,19 +278,39 @@ function UiTextboxInteractable.new(options)
         button:DrawScreen()
     end
 
+    function self:MouseMove(x, y, dx, dy)
+        return button:MouseMove(x, y, dx, dy)
+    end
+
     function self:MousePress(x, y)
         local wasClicked = button:MousePress(x, y)
         
         if wasClicked then
             self.isActive = true
+            if self.placeholder and self.text == self.placeholder then
+                self.text = ''
+            end
             if self.onClick then
                 self.onClick()
             end
             return true
         end
 
-        self.isActive = false
+        if self.isActive then
+            self.isActive = false
+            if self.placeholder and self.text == '' then
+                self.text = self.placeholder
+            end
+            if self.onBlur then
+                self.onBlur()
+            end
+        end
+
         return false
+    end
+
+    function self:MouseRelease(x, y)
+        return button:MouseRelease(x, y)
     end
 
     function self:TextInput(char)
@@ -331,7 +351,7 @@ KeySelector.__index = KeySelector
 function KeySelector.new(options)
     local self = setmetatable(options, KeySelector)
 
-    self.text = options.initialText or 'New Key'
+    self.text = options.placeholder or 'New Key'
     self.value = ''
     self.isActive = false
     self.isAppend = false
@@ -340,27 +360,33 @@ function KeySelector.new(options)
         tl = 1, tr = 1, bl = 1, br = 1,
         ptl = 1, ptr = 1, pbl = 1, pbr = 1,
         color1 = self.isActive and colors.buttonActive or colors.buttonBackground,
-        text = self.text
-    })
-    button:onClick(function()
-        if not self.isActive then
-            self:SetActive(true)
-            return true
+        text = self.text,
+        onClick = function()
+            if not self.isActive then
+                self:SetActive(true)
+                return true
+            end
+        end,
+        onBlur = function()
+            self:SetActive(false)
         end
-    end)
+    })
 
     local buttonAdd = UiButtonInteractable.new({
         tl = 1, tr = 1, bl = 1, br = 1,
         ptl = 1, ptr = 1, pbl = 1, pbr = 1,
         color1 = self.isActive and colors.buttonActive or colors.buttonBackground,
-        text = "Key++"
-    })
-    buttonAdd:onClick(function()
-        if not self.isActive then
-            self:SetActive(true, true)
-            return true
+        text = "Key++",
+        onClick = function()
+            if not self.isActive then
+                self:SetActive(true, true)
+                return true
+            end
+        end,
+        onBlur = function()
+            self:SetActive(false)
         end
-    end)
+    })
 
     local function GetSpringKeySymbol(key)
         local function MatchAnyRaw(text, rawKeyArray)
@@ -427,6 +453,11 @@ function KeySelector.new(options)
         buttonAdd:DrawScreen()
     end
     
+    function self:MouseMove(x, y)
+        button:MouseMove(x, y)
+        buttonAdd:MouseMove(x, y)
+    end
+    
     function self:MousePress(x, y)
         local isClicked = button:MousePress(x, y)
         local isClickedAdd = buttonAdd:MousePress(x, y)
@@ -444,8 +475,8 @@ function KeySelector.new(options)
             end
             self.text = "Press a key..."
         elseif self.text == "Press a key..." then
-            self.value = options.initialValue or ""
-            self.text = options.initialText or "New Key"
+            self.value = self.placeholder or ""
+            self.text = self.placeholder or "New Key"
         end
     end
     
@@ -471,7 +502,7 @@ function KeySelector.new(options)
                 self.text = modstring .. springSymbol
             end
 
-            self.isActive = false
+            self:SetActive(false)
             if self.onChange then self.onChange(self.value) end
 
             return true
@@ -487,7 +518,9 @@ CommandSelector.__index = CommandSelector
 
 function CommandSelector.new(options)
     local self = setmetatable({}, CommandSelector)
-    self.selectedValue = options.initialValue or "New Command"
+
+    self.placeholder = options.placeholder or "New Command"
+    self.selectedValue = self.placeholder
     self.isActive = false
     self.x = 0
     self.y = 0
@@ -504,14 +537,14 @@ function CommandSelector.new(options)
         tl = 1, tr = 1, bl = 1, br = 1,
         ptl = 1, ptr = 1, pbl = 1, pbr = 1,
         color1 = self.isActive and colors.buttonActive or colors.buttonBackground,
-        text = options.initialValue or "New Command"
-    })
-    button:onClick(function()
-        self.isActive = not self.isActive
-        if self.isActive then
-            self.filter = "Search..."
+        text = self.placeholder,
+        onClick = function()
+            self.isActive = not self.isActive
+            if self.isActive then
+                self.filter = "Search..."
+            end
         end
-    end)
+    })
 
     function self:setDimensions(x, y, width, height)
         self.x = x
@@ -593,6 +626,10 @@ function CommandSelector.new(options)
             end
             font:End()
         end
+    end
+    
+    function self:MouseMove(x, y)
+        button:MouseMove(x, y)
     end
 
     function self:MousePress(x, y)
@@ -725,16 +762,15 @@ function BindingList.new(options)
             local button = UiButtonInteractable.new({
                 text = "Del" .. i,
                 color1 = colors.removeButton,
-                color2 = colors.removeButtonHover
-            })
-            -- Fix: Call onClick through instance rather than as a function
-            button:onClick(function()
-                if self.onRemove then
-                    local binding = self.filteredBindings[i]
-                    self.onRemove(binding.boundWith, binding.command, binding.extra)
-                    self.maxScrollOffset = math.max(self.minScrollOffset, (#self.filteredBindings * (BUTTON_HEIGHT + elementPadding)) + HEADER_SIZE + PADDING - self.height)
+                color2 = colors.removeButtonHover,
+                onClick = function()
+                    if self.onRemove then
+                        local binding = self.filteredBindings[i]
+                        self.onRemove(binding.boundWith, binding.command, binding.extra)
+                        self.maxScrollOffset = math.max(self.minScrollOffset, (#self.filteredBindings * (BUTTON_HEIGHT + elementPadding)) + HEADER_SIZE + PADDING - self.height)
+                    end
                 end
-            end)
+            })
             self.deleteButtons[i] = button
         end
     end
@@ -990,7 +1026,7 @@ local function InitializeUI()
     -- Key selector
     widgetLifecycleRegistry:unregister(keySelector)
     keySelector = KeySelector.new({
-        initialText = "New Key"
+        placeholder = "New Key"
     })
     keySelector:setDimensions(
         window.x + elementPadding + PADDING,
@@ -1003,7 +1039,7 @@ local function InitializeUI()
     -- Command selector
     widgetLifecycleRegistry:unregister(commandSelector)
     commandSelector = CommandSelector.new({
-        initialValue = "New Command",
+        placeholder = "New Command",
         options = {},  -- Will be populated from availableCommands
     })
     commandSelector:setDimensions(
@@ -1017,16 +1053,11 @@ local function InitializeUI()
     -- Extra command selector
     widgetLifecycleRegistry:unregister(extraSelector)
     extraSelector = UiTextboxInteractable.new({
-        initialValue = 'New Command Extras',
+        placeholder = 'New Command Extras',
         px = window.x + math.floor(window.width * 2/3) + elementPadding,
         py = window.y + elementPadding + INPUT_HEIGHT + FOOTER_SIZE,
         sx = window.x + math.floor(window.width * 3/3) + elementPadding - PADDING - 70,
-        sy = window.y + elementPadding + INPUT_HEIGHT*2 + FOOTER_SIZE,
-        onClick = function()
-            if extraSelector.text == "New Command Extras" then
-                extraSelector.text = ""
-            end
-        end
+        sy = window.y + elementPadding + INPUT_HEIGHT*2 + FOOTER_SIZE
     })
     widgetLifecycleRegistry:register(extraSelector)
 
@@ -1037,19 +1068,19 @@ local function InitializeUI()
         py = window.y + elementPadding + INPUT_HEIGHT + FOOTER_SIZE,
         sx = window.x + window.width - 2*elementPadding - PADDING,
         sy = window.y + elementPadding + INPUT_HEIGHT*2 + FOOTER_SIZE,
-        text = 'Add'
+        text = 'Add',
+        onClick = function()
+            local extra = extraSelector.text
+            if extra == "New Command Extras" then extra = "" end
+    
+            hotkeyManager:SaveBinding(keySelector.value, commandSelector.selectedValue, extra)
+    
+            keySelector.value = "New Key"
+            commandSelector.selectedValue = "New Command"
+            extraSelector.text = "New Command Extras"
+            filterTextbox.text = "Filter..."
+        end
     })
-    addButton:onClick(function()
-        local extra = extraSelector.text
-        if extra == "New Command Extras" then extra = "" end
-
-        hotkeyManager:SaveBinding(keySelector.value, commandSelector.selectedValue, extra)
-
-        keySelector.value = "New Key"
-        commandSelector.selectedValue = "New Command"
-        extraSelector.text = "New Command Extras"
-        filterTextbox.text = "Filter..."
-    end)
     widgetLifecycleRegistry:register(addButton)
 
     -- Create binding list
@@ -1070,16 +1101,11 @@ local function InitializeUI()
     -- Add filter textbox at the bottom
     widgetLifecycleRegistry:unregister(filterTextbox)
     filterTextbox = UiTextboxInteractable.new({
-        initialValue = 'Filter...',
+        placeholder = 'Filter...',
         px = window.x + elementPadding + PADDING,
         py = window.y + 2*elementPadding,
         sx = window.x + window.width * 1/3,
         sy = window.y + 2*elementPadding + INPUT_HEIGHT,
-        onClick = function()
-            if filterTextbox.text == "Filter..." then
-                filterTextbox.text = ""
-            end
-        end,
         onChange = function(text)
             if bindingList then
                 bindingList:setFilter(text)
@@ -1095,11 +1121,11 @@ local function InitializeUI()
         py = window.y + 2*elementPadding,
         sx = window.x + window.width - 2*elementPadding - PADDING,
         sy = window.y + 2*elementPadding + INPUT_HEIGHT,
-        text = 'Default'
+        text = 'Default',
+        onClick = function()
+            hotkeyManager:LoadDefaultConfig()
+        end
     })
-    defaultButton:onClick(function()
-        hotkeyManager:LoadDefaultConfig()
-    end)
     widgetLifecycleRegistry:register(defaultButton)
 end
 -- #endregion
@@ -1224,6 +1250,8 @@ function widget:ViewResize()
     vsx, vsy = Spring.GetViewGeometry()
     window.x = math.floor((vsx * centerPosX) - (window.width / 2))
     window.y = math.floor((vsy * centerPosY) - (window.height / 2))
+    
+    font = WG['fonts'].getFont()
     
     if backgroundGuishader then
         gl.DeleteList(backgroundGuishader)
