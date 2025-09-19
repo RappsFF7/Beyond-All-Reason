@@ -90,7 +90,7 @@ local commandSelector
 local extraSelector
 local addButton
 local filterTextbox
-local defaultButton
+local resetButton
 
 local widgetLifecycleRegistry
 
@@ -1142,18 +1142,18 @@ local function InitializeUI()
     widgetLifecycleRegistry:register(filterTextbox)
 
     -- Default button
-    widgetLifecycleRegistry:unregister(defaultButton)
-    defaultButton = UiButtonInteractable.new({
+    widgetLifecycleRegistry:unregister(resetButton)
+    resetButton = UiButtonInteractable.new({
         px = window.x + window.width - elementPadding + PADDING - 120,
         py = window.y + 2*elementPadding,
         sx = window.x + window.width - 2*elementPadding - PADDING,
         sy = window.y + 2*elementPadding + INPUT_HEIGHT,
-        text = 'Default',
+        text = 'Reset All',
         onClick = function()
             hotkeyManager:LoadDefaultConfig()
         end
     })
-    widgetLifecycleRegistry:register(defaultButton)
+    widgetLifecycleRegistry:register(resetButton)
 end
 -- #endregion
 
@@ -1204,13 +1204,17 @@ end
 function widget:MousePress(x, y, button)
     if not show then return false end
     
-    return widgetLifecycleRegistry:dispatchEvent('MousePress', x, y, button)
+    widgetLifecycleRegistry:dispatchEvent('MousePress', x, y, button)
+    
+    return true
 end
 
 function widget:MouseRelease(x, y, button)
     if not show then return false end
 
-    return widgetLifecycleRegistry:dispatchEvent('MouseRelease', x, y, button)
+    widgetLifecycleRegistry:dispatchEvent('MouseRelease', x, y, button)
+
+    return true
 end
 
 function widget:KeyPress(key, mods, isRepeat, label)
