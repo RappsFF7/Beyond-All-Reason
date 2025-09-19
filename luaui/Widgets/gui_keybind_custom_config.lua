@@ -39,8 +39,8 @@ local colors = {
     windowBackgroundGold2 = {32/255, 24/255, 11/255, math.max(0.75, Spring.GetConfigFloat("ui_opacity", 0.7))},
     buttonBackground = {0.15, 0.15, 0.15, 0.3},
     buttonBackgroundDark = {0.05, 0.05, 0.05, 1},
-    buttonHover = {0.25, 0.25, 0.25, 1},
-    buttonActive = {0.3, 0.3, 0.3, 1},
+    buttonHover = {0.25, 0.25, 0.25, 0.7},
+    buttonActive = {0.3, 0.3, 0.3, 0.7},
     text = {1, 1, 1, 1},
     textGold = {171/255, 141/255, 107/255, 1},
     textGoldBright = {245/255, 196/255, 136/255, 1},
@@ -286,12 +286,12 @@ function UiTextboxInteractable.new(options)
         if self.isActive then
             local color = colors.text
             local duration = 1 -- 1s
-            local textCursorPos = math.floor(font:GetTextWidth(utf8.sub(self.text, 1, self.px)) * FONT_SIZE)
+            local textEndPos = math.floor(font:GetTextWidth(utf8.sub(self.text, 1, self.px)) * FONT_SIZE)
             color[4] = 1 - (totalDeltaTime * (1 / duration)) + 0.15
 
             font:Begin()
             font:SetTextColor(color)
-            font:Print("|", self.px + textCursorPos, self.py + FONT_SIZE / 2, FONT_SIZE, "n")
+            font:Print("|", self.px + textEndPos + elementPadding, self.py + FONT_SIZE / 2, FONT_SIZE, "n")
             font:End()
         end
     end
@@ -736,6 +736,7 @@ function BindingList.new(options)
     self.maxScrollOffset = 0
     self.removeHover = -1
     self.bindings = {}
+    self.filteredBindings = {}
     self.deleteButtons = {}
     self.onRemove = options.onRemove
     self.filterText = ""
@@ -781,16 +782,16 @@ function BindingList.new(options)
 
         -- Create/update delete buttons
         self.deleteButtons = {}
-        for i = 1, #self.filteredBindings do
+        for i = 1, #self.bindings do
             local button = UiButtonInteractable.new({
                 text = "Del" .. i,
                 color1 = colors.removeButton,
                 color2 = colors.removeButtonHover,
                 onClick = function()
                     if self.onRemove then
-                        local binding = self.filteredBindings[i]
+                        local binding = self.bindings[i]
                         self.onRemove(binding.boundWith, binding.command, binding.extra)
-                        self.maxScrollOffset = math.max(self.minScrollOffset, (#self.filteredBindings * (BUTTON_HEIGHT + elementPadding)) + HEADER_SIZE + PADDING - self.height)
+                        self.maxScrollOffset = math.max(self.minScrollOffset, (#self.bindings * (BUTTON_HEIGHT + elementPadding)) + HEADER_SIZE + PADDING - self.height)
                     end
                 end
             })
@@ -839,13 +840,15 @@ function BindingList.new(options)
                     
                     -- Position and draw delete button
                     local deleteButton = self.deleteButtons[i]
-                    deleteButton.tranX = self.x
-                    deleteButton.tranY = self.y + self.height
-                    deleteButton.px = self.width - 55
-                    deleteButton.py = yPos + elementPadding
-                    deleteButton.sx = self.width - 15
-                    deleteButton.sy = yPos + BUTTON_HEIGHT - elementPadding
-                    deleteButton:DrawScreen()
+                    if deleteButton then
+                        deleteButton.tranX = self.x
+                        deleteButton.tranY = self.y + self.height
+                        deleteButton.px = self.width - 55
+                        deleteButton.py = yPos + elementPadding
+                        deleteButton.sx = self.width - 15
+                        deleteButton.sy = yPos + BUTTON_HEIGHT - elementPadding
+                        deleteButton:DrawScreen()
+                    end
                 end
             end
     
@@ -1169,6 +1172,7 @@ function widget:DrawScreen()
         self:MouseMove(x, y)
 
         gl.Color(colors.text)
+        Spring.SetMouseCursor('cursornormal')
 
         DrawBackground()
         
