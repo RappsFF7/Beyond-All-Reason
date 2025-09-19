@@ -20,6 +20,8 @@ end
 
 -- #region Local variables and helper functions
 
+local utf8 = VFS.Include('common/luaUtilities/utf8.lua')
+
 -- Constants
 local BUTTON_HEIGHT = 24
 local INPUT_HEIGHT = 24
@@ -265,6 +267,7 @@ function UiTextboxInteractable.new(options)
     self.isActive = false
     self.text = options.placeholder or ""
     
+    local totalDeltaTime = 0
     local font = WG['fonts'].getFont()
 
     local button = UiButtonInteractable.new({
@@ -278,6 +281,23 @@ function UiTextboxInteractable.new(options)
     function self:DrawScreen()
         button.text = self.text
         button:DrawScreen()
+
+        -- Draw text beam
+        if self.isActive then
+            local color = colors.text
+            local duration = 1 -- 1s
+            local textCursorPos = math.floor(font:GetTextWidth(utf8.sub(self.text, 1, self.px)) * FONT_SIZE)
+            color[4] = 1 - (totalDeltaTime * (1 / duration)) + 0.15
+
+            font:Begin()
+            font:SetTextColor(color)
+            font:Print("|", self.px + textCursorPos, self.py + FONT_SIZE / 2, FONT_SIZE, "n")
+            font:End()
+        end
+    end
+
+    function self:Update(dt)
+        totalDeltaTime = totalDeltaTime + dt
     end
 
     function self:MouseMove(x, y, dx, dy)
@@ -1157,6 +1177,10 @@ function widget:DrawScreen()
     end, function()
         gl.PopMatrix()
     end)
+end
+
+function widget:Update(dt)
+    widgetLifecycleRegistry:dispatchEvent('Update', dt)
 end
 
 function widget:MouseWheel(up, value)
