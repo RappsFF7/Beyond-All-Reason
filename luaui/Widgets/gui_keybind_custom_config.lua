@@ -36,10 +36,12 @@ local colors = {
     windowBackgroundGold1 = {77/255, 59/255, 37/255, math.max(0.75, Spring.GetConfigFloat("ui_opacity", 0.7))},
     windowBackgroundGold2 = {32/255, 24/255, 11/255, math.max(0.75, Spring.GetConfigFloat("ui_opacity", 0.7))},
     buttonBackground = {0.15, 0.15, 0.15, 0.3},
+    buttonBackgroundDark = {0.05, 0.05, 0.05, 1},
     buttonHover = {0.25, 0.25, 0.25, 1},
     buttonActive = {0.3, 0.3, 0.3, 1},
     text = {1, 1, 1, 1},
     textGold = {171/255, 141/255, 107/255, 1},
+    textGoldBright = {245/255, 196/255, 136/255, 1},
     input = {0.12, 0.12, 0.12, 1},
     inputActive = {0.2, 0.2, 0.2, 1},
     removeButton = {0.7, 0.2, 0.2, 0.8},
@@ -204,7 +206,7 @@ function UiButtonInteractable.new(options)
         font:Print(
             self.text,
             self.px + elementPadding,
-            self.py + elementPadding,
+            self.py + elementPadding + (self.sy - self.py) / 2 - FONT_SIZE / 2,
             FONT_SIZE, "n"
         )
         font:End()
@@ -575,14 +577,15 @@ function CommandSelector.new(options)
         button.text = self.isActive and self.filter or self.selectedValue
         button:DrawScreen()
         
-        -- Draw dropdown arrow
+        -- Draw dropdown indicator
         -- UiSelector
-        local arrowSize = FONT_SIZE
-        local arrowX = self.x + self.width - elementPadding * 3 - arrowSize
-        local arrowY = self.y + elementPadding
-        font:Begin()
-        font:Print("▼", arrowX, arrowY, arrowSize, "n")
-        font:End()
+        RectRound(
+            self.x + self.width * 9/10,
+            self.y,
+            self.x + self.width,
+            self.y + self.height,
+            1, 2, 2, 2, 2, { 0.7, 0.7, 0.7, 0.3 }, { 0.7, 0.7, 0.7, 0.3 }
+        )
         
         -- Draw dropdown if active
         if self.isActive then
@@ -787,15 +790,16 @@ function BindingList.new(options)
             
             -- Draw header
             font:Begin()
-            font:Print("Keys", 0, -HEADER_SIZE, HEADER_SIZE, "n")
-            font:Print("Command", self.width * 1/3, -HEADER_SIZE, HEADER_SIZE, "n")
-            font:Print("Command Extras", self.width * 2/3, -HEADER_SIZE, HEADER_SIZE, "n")
+            font:SetTextColor(colors.textGoldBright)
+            font:Print("Keys", 0, -HEADER_SIZE - PADDING, HEADER_SIZE, "n")
+            font:Print("Command", self.width * 1/3, -HEADER_SIZE - PADDING, HEADER_SIZE, "n")
+            font:Print("Command Extras", self.width * 2/3, -HEADER_SIZE - PADDING, HEADER_SIZE, "n")
             font:End()
             
             -- Draw table
-            gl.Scissor(self.x, self.y + PADDING, self.width, self.height - HEADER_SIZE - PADDING*2)
+            gl.Scissor(self.x, self.y + PADDING, self.width, self.height - HEADER_SIZE - PADDING*4)
             for i, binding in ipairs(self.filteredBindings) do
-                local yPos = -(i * (BUTTON_HEIGHT + elementPadding)) - HEADER_SIZE + self.scrollOffset
+                local yPos = -(i * (BUTTON_HEIGHT + elementPadding)) - HEADER_SIZE - PADDING*3 + self.scrollOffset
                 
                 -- Only draw if visible
                 if yPos > -(self.height + BUTTON_HEIGHT) and yPos < BUTTON_HEIGHT then
@@ -828,9 +832,9 @@ function BindingList.new(options)
             -- Draw scrollbar
             WG.FlowUI.Draw.Scroller(
                 self.width - 7,
-                self.height - HEADER_SIZE - PADDING - 70,
+                self.height - HEADER_SIZE - PADDING - 100,
                 self.width,
-                -HEADER_SIZE - PADDING,
+                -HEADER_SIZE - PADDING*3,
                 self.maxScrollOffset,
                 -self.scrollOffset
             )
@@ -998,7 +1002,7 @@ local function DrawBackground()
     if WG['guishader'] then
         if not backgroundGuishader then
             backgroundGuishader = gl.CreateList(function()
-                RectRound(window.x, window.y, window.x + window.width, window.y + window.height, elementCorner)
+                RectRound(window.x, window.y + FOOTER_SIZE + PADDING*2, window.x + window.width, window.y + window.height, elementCorner)
             end)
         end
         WG['guishader'].InsertDlist(backgroundGuishader, 'keybindconfig')
@@ -1015,11 +1019,11 @@ local function DrawBackground()
     font:End()
     
     -- Main window
-    UiElement(window.x, window.y + FOOTER_SIZE + 2*PADDING, window.x + window.width, window.y + window.height, 1,1,1,1, 1, nil, nil, nil, 0.85)
+    UiElement(window.x, window.y + FOOTER_SIZE + 2*PADDING, window.x + window.width, window.y + window.height, 1,1,1,1, 1,nil,nil,nil, 0.85)
 
     -- Footer
-    UiElement(window.x, window.y, window.x + window.width * 1/3 + PADDING, window.y + FOOTER_SIZE + 2*PADDING + elementPadding, 1,1,1,1, 1)
-    UiElement(window.x + window.width * 2.5/3, window.y, window.x + window.width, window.y + FOOTER_SIZE + 2*PADDING + elementPadding, 1,1,1,1, 1)
+    UiElement(window.x, window.y, window.x + window.width * 1/3 + PADDING, window.y + FOOTER_SIZE + 2*PADDING + elementPadding, 1,1,1,1, 1,nil,nil,nil, 0.85, nil,colors.buttonBackgroundDark)
+    UiElement(window.x + window.width * 2.5/3, window.y, window.x + window.width, window.y + FOOTER_SIZE + 2*PADDING + elementPadding, 1,1,1,1, 1,nil,nil,nil, 0.85, nil,colors.buttonBackgroundDark)
 end
 
 local function InitializeUI()
@@ -1030,7 +1034,7 @@ local function InitializeUI()
     })
     keySelector:setDimensions(
         window.x + elementPadding + PADDING,
-        window.y + elementPadding + INPUT_HEIGHT + FOOTER_SIZE,
+        window.y + elementPadding + PADDING * 1/2 + INPUT_HEIGHT + FOOTER_SIZE,
         math.floor(window.width * 1/3) - 2*elementPadding - PADDING,
         INPUT_HEIGHT
     )
@@ -1044,7 +1048,7 @@ local function InitializeUI()
     })
     commandSelector:setDimensions(
         window.x + math.floor(window.width * 1/3) + elementPadding,
-        window.y + elementPadding + INPUT_HEIGHT + FOOTER_SIZE,
+        window.y + elementPadding + PADDING * 1/2 + INPUT_HEIGHT + FOOTER_SIZE,
         math.floor(window.width * 1/3) - elementPadding,
         INPUT_HEIGHT
     )
@@ -1055,9 +1059,9 @@ local function InitializeUI()
     extraSelector = UiTextboxInteractable.new({
         placeholder = 'New Command Extras',
         px = window.x + math.floor(window.width * 2/3) + elementPadding,
-        py = window.y + elementPadding + INPUT_HEIGHT + FOOTER_SIZE,
+        py = window.y + elementPadding + PADDING * 1/2 + INPUT_HEIGHT + FOOTER_SIZE,
         sx = window.x + math.floor(window.width * 3/3) + elementPadding - PADDING - 70,
-        sy = window.y + elementPadding + INPUT_HEIGHT*2 + FOOTER_SIZE
+        sy = window.y + elementPadding + PADDING * 1/2 + INPUT_HEIGHT*2 + FOOTER_SIZE
     })
     widgetLifecycleRegistry:register(extraSelector)
 
@@ -1065,9 +1069,9 @@ local function InitializeUI()
     widgetLifecycleRegistry:unregister(addButton)
     addButton = UiButtonInteractable.new({
         px = window.x + window.width - elementPadding + PADDING - 70,
-        py = window.y + elementPadding + INPUT_HEIGHT + FOOTER_SIZE,
+        py = window.y + elementPadding + PADDING * 1/2 + INPUT_HEIGHT + FOOTER_SIZE,
         sx = window.x + window.width - 2*elementPadding - PADDING,
-        sy = window.y + elementPadding + INPUT_HEIGHT*2 + FOOTER_SIZE,
+        sy = window.y + elementPadding + PADDING * 1/2 + INPUT_HEIGHT*2 + FOOTER_SIZE,
         text = 'Add',
         onClick = function()
             local extra = extraSelector.text
