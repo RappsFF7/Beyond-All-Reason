@@ -21,6 +21,7 @@ end
 -- #region Local variables and helper functions
 
 local utf8 = VFS.Include('common/luaUtilities/utf8.lua')
+local keyLayouts = VFS.Include("luaui/configs/keyboard_layouts.lua")
 
 -- Constants
 local BUTTON_HEIGHT = 24
@@ -902,15 +903,13 @@ HotkeyManager.__index = HotkeyManager
 function HotkeyManager.new(options)
     local self = setmetatable(options or {}, HotkeyManager)
 
-    local defaultFile = "luaui/configs/hotkeys/grid_keys.txt"
-
-    self.file = "uikeys.txt"
+    self.file = keyLayouts.keybindingLayoutFiles[#keyLayouts.keybindingLayoutFiles]
     self.currentBindings = {}
     self.availableKeys = {}
     self.availableCommands = {}
 
     function self:LoadDefaultConfig()
-        Spring.SetConfigString("KeybindingFile", defaultFile)
+        Spring.SetConfigString("KeybindingFile", keyLayouts.keybindingLayoutFiles[1])
 
         if WG['bar_hotkeys'] and WG['bar_hotkeys'].reloadBindings then
             WG['bar_hotkeys'].reloadBindings()
@@ -921,7 +920,7 @@ function HotkeyManager.new(options)
 
     function self:LoadHotkeyConfigs()
         -- Load available commands and keys from hotkey config files
-        local gridKeys = VFS.LoadFile(defaultFile)
+        local gridKeys = VFS.LoadFile(keyLayouts.keybindingLayoutFiles[1])
         if gridKeys then
             for line in gridKeys:gmatch("[^\r\n]+") do
                 if line:match("^bind%s+") then
@@ -1205,7 +1204,7 @@ function widget:MousePress(x, y, button)
     if not show then return false end
     
     widgetLifecycleRegistry:dispatchEvent('MousePress', x, y, button)
-    
+
     return true
 end
 
