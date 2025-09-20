@@ -518,7 +518,11 @@ function KeySelector.new(options)
         local springSymbol = GetSpringKeySymbol(key)
         if springSymbol then
             if self.isAppend then
-                self.value = self.value .. ',' .. modstring .. springSymbol
+                local divider = ''
+                if self.value ~= '' then
+                    divider = ','
+                end
+                self.value = self.value .. divider .. modstring .. springSymbol
                 self.text = self.value
             else
                 self.value = modstring .. springSymbol
