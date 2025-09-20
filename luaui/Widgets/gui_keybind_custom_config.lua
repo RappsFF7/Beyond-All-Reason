@@ -108,19 +108,13 @@ local function log(...)
 end
 
 local function WidgetPCall(func, callback, ...)
-    local function errorHandler(err)
-        -- The '2' argument skips the errorHandler frame itself
-        log("Error:", debug.traceback(err, 2))
-        return err
+    local success, result = pcall(func, ...)
+    if not success then
+        log("Error:", result) -- result will contain the error message
     end
-
-    local _, result = xpcall(func, errorHandler, ...)
-
     if callback then
         callback()
     end
-
-    return result
 end
 
 -- #endregion local variables
@@ -129,27 +123,47 @@ end
 
 -- #region Classes
 
---[[
-    Widget Lifecycle Registry System
-
-    Events: 
-        MouseWheel, MouseMove, MousePress, MouseRelease
-        KeyPress,
-        TextInput
-]]--
 local WidgetLifecycleRegistry = {}
 WidgetLifecycleRegistry.__index = WidgetLifecycleRegistry
 
-function WidgetLifecycleRegistry.new()
+function WidgetLifecycleRegistry.new(component)
     local self = setmetatable({}, WidgetLifecycleRegistry)
 
     self.components = {}
 
-    function WidgetLifecycleRegistry:register(component)
+    function self:wrap(component)
+        -- Automatically hook into widget lifecycle methods
+        -- gadgets.lua and barwidgets.lua has callInLists, but they're local so we can't use them
+        local methods = {
+            'Initialize', 'Update', 'Shutdown', 'DrawScreen', 'ViewResize',
+            'MouseWheel', 'MouseMove', 'MousePress', 'MouseRelease',
+            'KeyPress', 'TextInput'
+        }
+        for _, method in ipairs(methods) do
+            local original = component[method]
+            
+            component[method] = function(componentSelf, ...)
+                if not show and method ~= 'Initialize' then return false end
+
+                local result
+                if original then
+                    result = original(component, ...)
+                end
+
+                local resultDispatch = self:dispatchEvent(method, ...)
+
+                return result or resultDispatch
+            end
+        end
+
+        return component
+    end
+
+    function self:register(component)
         table.insert(self.components, component)
     end
     
-    function WidgetLifecycleRegistry:unregister(component)
+    function self:unregister(component)
         for i, comp in ipairs(self.components) do
             if comp == component then
                 table.remove(self.components, i)
@@ -158,7 +172,7 @@ function WidgetLifecycleRegistry.new()
         end
     end
     
-    function WidgetLifecycleRegistry:dispatchEvent(eventName, ...)
+    function self:dispatchEvent(eventName, ...)
         for i = #self.components, 1, -1 do  -- Reverse order so last added (top) component gets first chance
             local component = self.components[i]
             if component[eventName] then
@@ -1187,43 +1201,26 @@ function widget:DrawScreen()
 
         DrawBackground()
         
-        widgetLifecycleRegistry:dispatchEvent('DrawScreen')
-        
     end, function()
         gl.PopMatrix()
     end)
-end
-
-function widget:Update(dt)
-    widgetLifecycleRegistry:dispatchEvent('Update', dt)
-end
-
-function widget:MouseWheel(up, value)
-    if not show then return false end
-    
-    return widgetLifecycleRegistry:dispatchEvent('MouseWheel', up, value)
 end
 
 function widget:MouseMove(x, y, dx, dy, button)
     if not show then return false end
     if x == mx and y == my then return end
     mx, my = x, y
-
-    return widgetLifecycleRegistry:dispatchEvent('MouseMove', x, y, dx, dy, button)
 end
 
 function widget:MousePress(x, y, button)
     if not show then return false end
     
-    widgetLifecycleRegistry:dispatchEvent('MousePress', x, y, button)
-
+    -- Prevent mouse press from passing through to the game
     return true
 end
 
 function widget:MouseRelease(x, y, button)
     if not show then return false end
-
-    widgetLifecycleRegistry:dispatchEvent('MouseRelease', x, y, button)
 
     return true
 end
@@ -1234,21 +1231,13 @@ function widget:KeyPress(key, mods, isRepeat, label)
     -- Special handling for ESC key
     if key == 27 then -- Escape
         -- Check if any component wants to handle it first
-        local result = widgetLifecycleRegistry:dispatchEvent('KeyPress', key, mods, isRepeat, label)
-        if result then return true end
+        --local result = widgetLifecycleRegistry:dispatchEvent('KeyPress', key, mods, isRepeat, label)
+        --if result then return true end
         
         -- If not handled, close the widget
         widget:Toggle()
         return true
     end
-    
-    return widgetLifecycleRegistry:dispatchEvent('KeyPress', key, mods, isRepeat, label)
-end
-
-function widget:TextInput(char)
-    if not show then return false end
-    
-    return widgetLifecycleRegistry:dispatchEvent('TextInput', char)
 end
 
 function widget:Toggle()
@@ -1270,9 +1259,6 @@ function widget:Initialize()
     WidgetPCall(function()
         -- Initialize default font
         font = WG['fonts'].getFont()
-
-        -- Initialize widget lifecycle registry
-        widgetLifecycleRegistry = WidgetLifecycleRegistry.new()
         
         -- Initialize UI
         InitializeUI()
@@ -1290,6 +1276,8 @@ function widget:Initialize()
     
         -- Register widget in global table
         WG['keybind_custom_config'] = widget
+
+        return widgetLifecycleRegistry:dispatchEvent('Initialize')
     end)
 end
 
@@ -1333,3 +1321,7 @@ function widget:SetConfigData(data)
     end
 end
 -- #endregion
+
+-- Initialize widget lifecycle registry (must do before Initialize is called by widgetHandler)
+widgetLifecycleRegistry = WidgetLifecycleRegistry.new()
+widgetLifecycleRegistry:wrap(widget)
