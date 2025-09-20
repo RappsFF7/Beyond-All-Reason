@@ -920,14 +920,16 @@ function HotkeyManager.new(options)
 
     function self:LoadHotkeyConfigs()
         -- Load available commands and keys from hotkey config files
-        local gridKeys = VFS.LoadFile(keyLayouts.keybindingLayoutFiles[1])
-        if gridKeys then
-            for line in gridKeys:gmatch("[^\r\n]+") do
-                if line:match("^bind%s+") then
-                    local _, _, key, command = line:find("^bind%s+([^%s]+)%s+([^%s]+)")
-                    if key and command then
-                        self.availableKeys[key] = true
-                        self.availableCommands[command] = true
+        for _, file in pairs(keyLayouts.keybindingLayoutFiles) do
+            local gridKeys = VFS.LoadFile(file)
+            if gridKeys then
+                for line in gridKeys:gmatch("[^\r\n]+") do
+                    if line:match("^bind%s+") then
+                        local _, _, key, command = line:find("^bind%s+([^%s]+)%s+([^%s]+)")
+                        if key and command then
+                            self.availableKeys[key] = true
+                            self.availableCommands[command] = true
+                        end
                     end
                 end
             end
