@@ -947,14 +947,18 @@ function HotkeyManager.new(options)
             table.insert(keyOptions, key)
         end
         table.sort(keyOptions)
-        keySelector.options = keyOptions
+        if self.onChangeAvailableKeys then
+            self.onChangeAvailableKeys(keyOptions)
+        end
         
         local cmdOptions = {}
         for cmd in pairs(self.availableCommands) do
             table.insert(cmdOptions, cmd)
         end
         table.sort(cmdOptions)
-        commandSelector.options = cmdOptions
+        if self.onChangeAvailableCommands then
+            self.onChangeAvailableCommands(cmdOptions)
+        end
     end
 
     function self:LoadCurrentBindings()
@@ -1241,6 +1245,12 @@ function widget:Initialize()
                 if bindingList then
                     bindingList:setBindings(bindings)
                 end
+            end,
+            onChangeAvailableKeys = function(keys)
+                keySelector.options = keys
+            end,
+            onChangeAvailableCommands = function(commands)
+                commandSelector.options = commands
             end
         })
         hotkeyManager:LoadHotkeyConfigs()
