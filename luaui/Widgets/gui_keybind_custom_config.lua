@@ -126,7 +126,7 @@ end
 local WidgetLifecycleRegistry = {}
 WidgetLifecycleRegistry.__index = WidgetLifecycleRegistry
 
-function WidgetLifecycleRegistry.new(component)
+function WidgetLifecycleRegistry.new()
     local self = setmetatable({}, WidgetLifecycleRegistry)
 
     self.components = {}
@@ -262,15 +262,6 @@ function UiButtonInteractable.new(options)
         return false
     end
 
-    function self:MouseRelease(x, y, button)
-        if not isInRect(x, y) then
-            self.isActive = false
-            if self.onBlur then
-                self.onBlur()
-            end
-        end
-    end
-
     return self
 end
 
@@ -290,18 +281,29 @@ function UiTextboxInteractable.new(options)
     
     local totalDeltaTime = 0
     local font = WG['fonts'].getFont()
+    local subwidgets = WidgetLifecycleRegistry.new()
 
     local button = UiButtonInteractable.new({
         px = self.px, py = self.py, sx = self.sx, sy = self.sy,
         tl = 1, tr = 1, bl = 1, br = 1,
         ptl = 1, ptr = 1, pbl = 1, pbr = 1,
         text = self.text,
-        tranX = self.tranX, tranY = self.tranY
+        tranX = self.tranX, tranY = self.tranY,
+        onClick = function()
+            self.isActive = true
+            if self.placeholder and self.text == self.placeholder then
+                self.text = ''
+            end
+            if self.onClick then
+                self.onClick()
+            end
+            return true
+        end
     })
+    subwidgets:register(button)
 
     function self:DrawScreen()
         button.text = self.text
-        button:DrawScreen()
 
         -- Draw text beam
         if self.isActive then
@@ -321,24 +323,7 @@ function UiTextboxInteractable.new(options)
         totalDeltaTime = totalDeltaTime + dt
     end
 
-    function self:MouseMove(x, y, dx, dy)
-        return button:MouseMove(x, y, dx, dy)
-    end
-
     function self:MousePress(x, y)
-        local wasClicked = button:MousePress(x, y)
-        
-        if wasClicked then
-            self.isActive = true
-            if self.placeholder and self.text == self.placeholder then
-                self.text = ''
-            end
-            if self.onClick then
-                self.onClick()
-            end
-            return true
-        end
-
         if self.isActive then
             self.isActive = false
             if self.placeholder and self.text == '' then
@@ -350,10 +335,6 @@ function UiTextboxInteractable.new(options)
         end
 
         return false
-    end
-
-    function self:MouseRelease(x, y)
-        return button:MouseRelease(x, y)
     end
 
     function self:TextInput(char)
@@ -385,7 +366,7 @@ function UiTextboxInteractable.new(options)
         return false
     end
 
-    return self
+    return subwidgets:wrap(self)
 end
 
 local KeySelector = {}
@@ -393,6 +374,8 @@ KeySelector.__index = KeySelector
 
 function KeySelector.new(options)
     local self = setmetatable(options, KeySelector)
+
+    local subwidgets = WidgetLifecycleRegistry.new()
 
     self.text = options.placeholder or 'New Key'
     self.value = ''
@@ -414,6 +397,7 @@ function KeySelector.new(options)
             self:SetActive(false)
         end
     })
+    subwidgets:register(button)
 
     local buttonAdd = UiButtonInteractable.new({
         tl = 1, tr = 1, bl = 1, br = 1,
@@ -430,6 +414,7 @@ function KeySelector.new(options)
             self:SetActive(false)
         end
     })
+    subwidgets:register(buttonAdd)
 
     local function GetSpringKeySymbol(key)
         local function MatchAnyRaw(text, rawKeyArray)
@@ -492,21 +477,6 @@ function KeySelector.new(options)
     
     function self:DrawScreen()
         button.text = self.text
-        button:DrawScreen()
-        buttonAdd:DrawScreen()
-    end
-    
-    function self:MouseMove(x, y)
-        button:MouseMove(x, y)
-        buttonAdd:MouseMove(x, y)
-    end
-    
-    function self:MousePress(x, y)
-        local isClicked = button:MousePress(x, y)
-        local isClickedAdd = buttonAdd:MousePress(x, y)
-        if not isClicked and not isClickedAdd then
-            self:SetActive(false)
-        end
     end
     
     function self:SetActive(isActive, isAppend)
@@ -557,7 +527,7 @@ function KeySelector.new(options)
         return false
     end
 
-    return self
+    return subwidgets:wrap(self)
 end
 
 local CommandSelector = {}
@@ -578,6 +548,7 @@ function CommandSelector.new(options)
     self.filter = ""
 
     local font = WG['fonts'].getFont()
+    local subwidgets = WidgetLifecycleRegistry.new()
 
     -- UiSelector
     local button = UiButtonInteractable.new({
@@ -592,6 +563,7 @@ function CommandSelector.new(options)
             end
         end
     })
+    subwidgets:register(button)
 
     function self:setDimensions(x, y, width, height)
         self.x = x
@@ -620,7 +592,6 @@ function CommandSelector.new(options)
 
     function self:DrawScreen()
         button.text = self.isActive and self.filter or self.selectedValue
-        button:DrawScreen()
         
         -- Draw dropdown indicator
         -- UiSelector
@@ -675,18 +646,8 @@ function CommandSelector.new(options)
             font:End()
         end
     end
-    
-    function self:MouseMove(x, y)
-        button:MouseMove(x, y)
-    end
 
     function self:MousePress(x, y)
-        local wasClicked = button:MousePress(x, y)
-
-        if wasClicked then
-            return true
-        end
-        
         if self.isActive then
             local filteredOptions = self:updateFilteredOptions()
             local dropdownY = self.y + self.height
@@ -743,7 +704,7 @@ function CommandSelector.new(options)
         return false
     end
 
-    return self
+    return subwidgets:wrap(self)
 end
 
 -- Create BindingList class after the dropdown classes
@@ -993,8 +954,8 @@ function HotkeyManager.new(options)
 
     function self:LoadCurrentBindings()
         self.currentBindings = Spring.GetKeyBindings() or {}
-        if bindingList then
-            bindingList:setBindings(self.currentBindings)
+        if (self.onChange) then
+            self.onChange(self.currentBindings)
         end
     end
 
@@ -1270,7 +1231,13 @@ function widget:Initialize()
         end, nil, "t")
         
         -- Initialize hotkey manager
-        hotkeyManager = HotkeyManager.new()
+        hotkeyManager = HotkeyManager.new({
+            onChange = function(bindings)
+                if bindingList then
+                    bindingList:setBindings(bindings)
+                end
+            end
+        })
         hotkeyManager:LoadHotkeyConfigs()
         hotkeyManager:LoadCurrentBindings()
     
