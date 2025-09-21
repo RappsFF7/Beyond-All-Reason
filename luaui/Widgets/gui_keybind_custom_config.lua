@@ -108,13 +108,19 @@ local function log(...)
 end
 
 local function WidgetPCall(func, callback, ...)
-    local success, result = pcall(func, ...)
-    if not success then
-        log("Error:", result) -- result will contain the error message
+    local function errorHandler(err)
+        -- The '2' argument skips the errorHandler frame itself
+        log("Error:", debug.traceback(err, 2))
+        return err
     end
+
+    local _, result = xpcall(func, errorHandler, ...)
+
     if callback then
         callback()
     end
+
+    return result
 end
 
 -- #endregion local variables
