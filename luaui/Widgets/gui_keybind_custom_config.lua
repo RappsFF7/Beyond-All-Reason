@@ -724,6 +724,7 @@ function BindingList.new(options)
     self.bindings = {}
     self.filteredBindings = {}
     self.deleteButtons = {}
+    self.filteredDeleteButtons = {}
     self.onRemove = options.onRemove
     self.filterText = ""
 
@@ -741,13 +742,16 @@ function BindingList.new(options)
     function self:updateFilteredBindings()
         if self.filterText == "" then
             self.filteredBindings = self.bindings
+            self.filteredDeleteButtons = self.deleteButtons
         else
             self.filteredBindings = {}
-            for _, binding in ipairs(self.bindings) do
+            self.filteredDeleteButtons = {}
+            for i, binding in ipairs(self.bindings) do
                 if binding.boundWith:lower():find(self.filterText, 1, true) or
                    binding.command:lower():find(self.filterText, 1, true) or
                    (binding.extra and binding.extra:lower():find(self.filterText, 1, true)) then
                     table.insert(self.filteredBindings, binding)
+                    table.insert(self.filteredDeleteButtons, self.deleteButtons[i])
                 end
             end
         end
@@ -764,7 +768,6 @@ function BindingList.new(options)
 
     function self:setBindings(bindings)
         self.bindings = bindings
-        self:updateFilteredBindings()
 
         -- Create/update delete buttons
         self.deleteButtons = {}
@@ -783,6 +786,8 @@ function BindingList.new(options)
             })
             self.deleteButtons[i] = button
         end
+        
+        self:updateFilteredBindings()
     end
     
     function self:DrawScreen()
@@ -825,7 +830,7 @@ function BindingList.new(options)
                     font:End()
                     
                     -- Position and draw delete button
-                    local deleteButton = self.deleteButtons[i]
+                    local deleteButton = self.filteredDeleteButtons[i]
                     if deleteButton then
                         deleteButton.tranX = self.x
                         deleteButton.tranY = self.y + self.height
@@ -868,7 +873,7 @@ function BindingList.new(options)
     
     function self:MousePress(x, y)
         -- Check all visible buttons if they are clicked
-        for _, button in ipairs(self.deleteButtons) do
+        for _, button in ipairs(self.filteredDeleteButtons) do
             if isButtonVisible(button) then
                 if button:MousePress(x, y, nil, true) then
                     return true
