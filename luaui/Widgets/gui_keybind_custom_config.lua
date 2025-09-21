@@ -121,7 +121,7 @@ local function WidgetPCall(func, callback, ...)
     end
 
     return result
-end
+end 
 
 -- #endregion local variables
 
@@ -210,7 +210,7 @@ function UiButtonInteractable.new(options)
    
     local font = WG['fonts'].getFont()
 
-    local function isInRect(x, y)
+    local function isInRect(x, y)      
         return math_isInRect(
             x, y,
             self.px + (self.tranX or 0), self.py + (self.tranY or 0),
@@ -230,15 +230,17 @@ function UiButtonInteractable.new(options)
         )
         
         -- Draw text
-        font:Begin()
-        font:SetTextColor(1,1,1,1)
-        font:Print(
-            self.text,
-            self.px + elementPadding,
-            self.py + elementPadding + (self.sy - self.py) / 2 - FONT_SIZE / 2,
-            FONT_SIZE, "n"
-        )
-        font:End()
+        if self.text then
+            font:Begin()
+            font:SetTextColor(1,1,1,1)
+            font:Print(
+                self.text,
+                self.px + elementPadding,
+                self.py + elementPadding + (self.sy - self.py) / 2 - FONT_SIZE / 2,
+                FONT_SIZE, "n"
+            )
+            font:End()
+        end
     end
 
     function self:MouseMove(x, y, dx, dy, button)
@@ -283,7 +285,8 @@ function UiTextboxInteractable.new(options)
     local self = setmetatable(options, UiTextboxInteractable)
 
     self.isActive = false
-    self.text = options.placeholder or ""
+    self.text = self.placeholder or ""
+    self.value = self.value or ""
     
     local totalDeltaTime = 0
     local font = WG['fonts'].getFont()
@@ -297,9 +300,7 @@ function UiTextboxInteractable.new(options)
         tranX = self.tranX, tranY = self.tranY,
         onClick = function()
             self.isActive = true
-            if self.placeholder and self.text == self.placeholder then
-                self.text = ''
-            end
+            self.text = self.value
             if self.onClick then
                 self.onClick()
             end
@@ -332,7 +333,7 @@ function UiTextboxInteractable.new(options)
     function self:MousePress(x, y)
         if self.isActive then
             self.isActive = false
-            if self.placeholder and self.text == '' then
+            if self.placeholder and self.value == '' then
                 self.text = self.placeholder
             end
             if self.onBlur then
@@ -346,9 +347,10 @@ function UiTextboxInteractable.new(options)
     function self:TextInput(char)
         if not self.isActive then return false end
         
-        self.text = self.text .. char
+        self.value = self.value .. char
+        self.text = self.value
         if self.onChange then
-            self.onChange(self.text)
+            self.onChange(self.value)
         end
 
         return true
@@ -358,10 +360,11 @@ function UiTextboxInteractable.new(options)
         if not self.isActive then return false end
         
         if key == 8 then -- Backspace
-            if #self.text > 0 then
-                self.text = self.text:sub(1, -2)
+            if #self.value > 0 then
+                self.value = self.value:sub(1, -2)
+                self.text = self.value
                 if self.onChange then
-                    self.onChange(self.text)
+                    self.onChange(self.value)
                 end
             end
             return true
@@ -494,7 +497,7 @@ function KeySelector.new(options)
             end
             self.text = "Press a key..."
         elseif self.text == "Press a key..." then
-            self.value = self.placeholder or ""
+            self.value = ""
             self.text = self.placeholder or "New Key"
         end
     end
@@ -543,7 +546,6 @@ function CommandSelector.new(options)
     local self = setmetatable({}, CommandSelector)
 
     self.placeholder = options.placeholder or "New Command"
-    self.selectedValue = self.placeholder
     self.isActive = false
     self.x = 0
     self.y = 0
@@ -597,7 +599,7 @@ function CommandSelector.new(options)
     end
 
     function self:DrawScreen()
-        button.text = self.isActive and self.filter or self.selectedValue
+        button.text = self.isActive and self.filter or self.value or self.placeholder
         
         -- Draw dropdown indicator
         -- UiSelector
@@ -668,8 +670,8 @@ function CommandSelector.new(options)
                     self.x + self.width,
                     optionY + itemHeight
                 ) then
-                    self.selectedValue = filteredOptions[i]
-                    if self.onChange then self.onChange(self.selectedValue) end
+                    self.value = filteredOptions[i]
+                    if self.onChange then self.onChange(self.value) end
                     self.isActive = false
                     return true
                 end
@@ -701,8 +703,8 @@ function CommandSelector.new(options)
         elseif key == 13 then -- Enter
             local filteredOptions = self:updateFilteredOptions()
             if #filteredOptions > 0 then
-                self.selectedValue = filteredOptions[1]
-                if self.onChange then self.onChange(self.selectedValue) end
+                self.value = filteredOptions[1]
+                if self.onChange then self.onChange(self.value) end
                 self.isActive = false
             end
             return true
@@ -1098,15 +1100,12 @@ local function InitializeUI()
         sy = window.y + elementPadding + PADDING * 1/2 + INPUT_HEIGHT*2 + FOOTER_SIZE,
         text = 'Add',
         onClick = function()
-            local extra = extraSelector.text
-            if extra == "New Command Extras" then extra = "" end
+            hotkeyManager:SaveBinding(keySelector.value, commandSelector.selectedValue, extraSelector.value)
     
-            hotkeyManager:SaveBinding(keySelector.value, commandSelector.selectedValue, extra)
-    
-            keySelector.value = "New Key"
-            commandSelector.selectedValue = "New Command"
-            extraSelector.text = "New Command Extras"
-            filterTextbox.text = "Filter..."
+            keySelector.value = ""
+            commandSelector.value = ""
+            extraSelector.value = ""
+            filterTextbox.value = ""
         end
     })
     widgetLifecycleRegistry:register(addButton)
