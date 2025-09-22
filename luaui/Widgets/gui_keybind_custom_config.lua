@@ -386,6 +386,201 @@ function UiTextboxInteractable.new(options)
     return subwidgets:wrap(self)
 end
 
+--[[
+    px, py, sx, sy,  tl, tr, br, bl,  ptl, ptr, pbr, pbl,  opacity, color1, color2, bgpadding, glossMult,
+    placeholder - Displayed text when the currently selected value is empty,
+    tranX - Set to glTransform X, tranY - Set to glTransform Y
+]]--
+local UiDropdownInteractable = {}
+UiDropdownInteractable.__index = UiDropdownInteractable
+
+function UiDropdownInteractable.new(options)
+    local self = setmetatable({}, UiDropdownInteractable)
+
+    self.placeholder = options.placeholder or ""
+    self.isActive = false
+    self.x = 0
+    self.y = 0
+    self.width = 0
+    self.height = 0
+    self.options = options.options or {}
+    self.onFocus = options.onFocus
+    self.onBlur = options.onBlur
+    self.onChange = options.onChange
+    self.filter = ""
+
+    local font = WG['fonts'].getFont()
+    local subwidgets = WidgetLifecycleRegistry.new()
+
+    -- UiSelector
+    local button = UiButtonInteractable.new({
+        tl = 1, tr = 1, bl = 1, br = 1,
+        ptl = 1, ptr = 1, pbl = 1, pbr = 1,
+        color1 = self.isActive and colors.buttonActive or colors.buttonBackground,
+        text = self.placeholder,
+        onClick = function()
+            self:SetActive(not self.isActive)
+            if self.isActive then
+                self.filter = "Search..."
+            end
+        end
+    })
+    subwidgets:register(button)
+
+    function self:setDimensions(x, y, width, height)
+        self.x = x
+        self.y = y
+        self.width = width
+        self.height = height
+        button.px = x
+        button.py = y
+        button.sx = x + width
+        button.sy = y + height
+    end
+
+    function self:updateFilteredOptions()
+        if self.filter == "" or self.filter == "Search..." then
+            return self.options
+        end
+        
+        local filtered = {}
+        for _, cmd in ipairs(self.options) do
+            if cmd:lower():find(self.filter:lower(), 1, true) then
+                table.insert(filtered, cmd)
+            end
+        end
+        return filtered
+    end
+
+    function self:SetActive(isActive)
+        local isChanging = (self.isActive ~= isActive)
+        self.isActive = isActive
+        if isChanging then
+            if isActive and self.onFocus then
+                self.onFocus()
+            elseif self.onBlur then
+                self.onBlur()
+            end
+        end
+    end
+
+    function self:DrawScreen()
+        button.text = self.isActive and self.filter or self.value or self.placeholder
+
+        -- Draw dropdown indicator
+        -- UiSelector
+        RectRound(
+            self.x + self.width * 9/10,
+            self.y,
+            self.x + self.width,
+            self.y + self.height,
+            1, 2, 2, 2, 2, { 0.7, 0.7, 0.7, 0.3 }, { 0.7, 0.7, 0.7, 0.3 }
+        )
+        
+        -- Draw dropdown if active
+        if self.isActive then
+            local filteredOptions = self:updateFilteredOptions()
+            local dropdownY = self.y + self.height
+            local itemHeight = self.height - elementPadding
+            local maxItems = math.min(10, #filteredOptions)
+        
+            RectRound(
+                self.x,
+                dropdownY,
+                self.x + self.width,
+                dropdownY + (maxItems * itemHeight),
+                1, 2, 2, 2, 2, { 0.5, 0.5, 0.5, 0.95 }
+            )
+            
+            font:Begin()
+            for i = 1, maxItems do
+                local option = filteredOptions[i]
+                local optionY = dropdownY + ((i-1) * itemHeight)
+                
+                if math_isInRect(mx, my, 
+                    self.x,
+                    optionY,
+                    self.x + self.width,
+                    optionY + itemHeight
+                ) then
+                    UiSelectHighlight(
+                        self.x,
+                        optionY,
+                        self.x + self.width,
+                        optionY + itemHeight
+                    )
+                end
+                
+                font:Print(option,
+                    self.x + elementPadding * 2,
+                    optionY + elementPadding,
+                    FONT_SIZE, "n"
+                )
+            end
+            font:End()
+        end
+    end
+
+    function self:MousePress(x, y)
+        if self.isActive then
+            local filteredOptions = self:updateFilteredOptions()
+            local dropdownY = self.y + self.height
+            local itemHeight = self.height - elementPadding
+            local maxItems = math.min(10, #filteredOptions)
+            
+            for i = 1, maxItems do
+                local optionY = dropdownY + ((i-1) * itemHeight)
+                if math_isInRect(x, y,
+                    self.x,
+                    optionY,
+                    self.x + self.width,
+                    optionY + itemHeight
+                ) then
+                    self.value = filteredOptions[i]
+                    if self.onChange then self.onChange(self.value) end
+                    self:SetActive(false)
+                    return true
+                end
+            end
+        end
+        self:SetActive(false)
+        return false
+    end
+
+    function self:TextInput(char)
+        if not self.isActive then return false end
+
+        if self.filter == "Search..." then
+            self.filter = ""
+        end
+        
+        self.filter = self.filter .. char
+        return true
+    end
+
+    function self:KeyPress(key)
+        if not self.isActive then return false end
+        
+        if key == 8 then -- Backspace
+            if #self.filter > 0 then
+                self.filter = self.filter:sub(1, -2)
+            end
+            return true
+        elseif key == 13 then -- Enter
+            local filteredOptions = self:updateFilteredOptions()
+            if #filteredOptions > 0 then
+                self.value = filteredOptions[1]
+                if self.onChange then self.onChange(self.value) end
+                self:SetActive(false)
+            end
+            return true
+        end
+        return false
+    end
+
+    return subwidgets:wrap(self)
+end
+
 local KeySelector = {}
 KeySelector.__index = KeySelector
 
@@ -551,187 +746,37 @@ local CommandSelector = {}
 CommandSelector.__index = CommandSelector
 
 function CommandSelector.new(options)
-    local self = setmetatable({}, CommandSelector)
+    local self = setmetatable(options or {}, CommandSelector)
 
-    self.placeholder = options.placeholder or "New Command"
-    self.isActive = false
-    self.x = 0
-    self.y = 0
-    self.width = 0
-    self.height = 0
-    self.options = options.options or {}
-    self.onFocus = options.onFocus
-    self.onBlur = options.onBlur
-    self.onChange = options.onChange
-    self.filter = ""
-
-    local font = WG['fonts'].getFont()
     local subwidgets = WidgetLifecycleRegistry.new()
 
     -- UiSelector
-    local button = UiButtonInteractable.new({
+    local button = UiDropdownInteractable.new({
         tl = 1, tr = 1, bl = 1, br = 1,
         ptl = 1, ptr = 1, pbl = 1, pbr = 1,
         color1 = self.isActive and colors.buttonActive or colors.buttonBackground,
-        text = self.placeholder,
-        onClick = function()
-            self:SetActive(not self.isActive)
-            if self.isActive then
-                self.filter = "Search..."
-            end
-        end
+        placeholder = "New Command",
+        options = options.options,
+        onFocus = options.onFocus,
+        onBlur = options.onBlur,
+        onChange = options.onChange
     })
     subwidgets:register(button)
 
     function self:setDimensions(x, y, width, height)
-        self.x = x
-        self.y = y
-        self.width = width
-        self.height = height
-        button.px = x
-        button.py = y
-        button.sx = x + width
-        button.sy = y + height
+        button:setDimensions(x, y, width, height)
     end
 
-    function self:updateFilteredOptions()
-        if self.filter == "" or self.filter == "Search..." then
-            return self.options
-        end
-        
-        local filtered = {}
-        for _, cmd in ipairs(self.options) do
-            if cmd:lower():find(self.filter:lower(), 1, true) then
-                table.insert(filtered, cmd)
-            end
-        end
-        return filtered
+    function self:setOptions(options)
+        button.options = options
     end
 
-    function self:SetActive(isActive)
-        local isChanging = (self.isActive ~= isActive)
-        self.isActive = isActive
-        if isChanging then
-            if isActive and self.onFocus then
-                self.onFocus()
-            elseif self.onBlur then
-                self.onBlur()
-            end
-        end
+    function self:getSelectedValue()
+        return button.value
     end
 
-    function self:DrawScreen()
-        button.text = self.isActive and self.filter or self.value or self.placeholder
-        
-        -- Draw dropdown indicator
-        -- UiSelector
-        RectRound(
-            self.x + self.width * 9/10,
-            self.y,
-            self.x + self.width,
-            self.y + self.height,
-            1, 2, 2, 2, 2, { 0.7, 0.7, 0.7, 0.3 }, { 0.7, 0.7, 0.7, 0.3 }
-        )
-        
-        -- Draw dropdown if active
-        if self.isActive then
-            local filteredOptions = self:updateFilteredOptions()
-            local dropdownY = self.y + self.height
-            local itemHeight = self.height - elementPadding
-            local maxItems = math.min(10, #filteredOptions)
-            
-            RectRound(
-                self.x,
-                dropdownY,
-                self.x + self.width,
-                dropdownY + (maxItems * itemHeight),
-                1, 2, 2, 2, 2, { 0.5, 0.5, 0.5, 0.95 }
-            )
-            
-            font:Begin()
-            for i = 1, maxItems do
-                local option = filteredOptions[i]
-                local optionY = dropdownY + ((i-1) * itemHeight)
-                
-                if math_isInRect(mx, my, 
-                    self.x,
-                    optionY,
-                    self.x + self.width,
-                    optionY + itemHeight
-                ) then
-                    UiSelectHighlight(
-                        self.x,
-                        optionY,
-                        self.x + self.width,
-                        optionY + itemHeight
-                    )
-                end
-                
-                font:Print(option,
-                    self.x + elementPadding * 2,
-                    optionY + elementPadding,
-                    FONT_SIZE, "n"
-                )
-            end
-            font:End()
-        end
-    end
-
-    function self:MousePress(x, y)
-        if self.isActive then
-            local filteredOptions = self:updateFilteredOptions()
-            local dropdownY = self.y + self.height
-            local itemHeight = self.height - elementPadding
-            local maxItems = math.min(10, #filteredOptions)
-            
-            for i = 1, maxItems do
-                local optionY = dropdownY + ((i-1) * itemHeight)
-                if math_isInRect(x, y,
-                    self.x,
-                    optionY,
-                    self.x + self.width,
-                    optionY + itemHeight
-                ) then
-                    self.value = filteredOptions[i]
-                    if self.onChange then self.onChange(self.value) end
-                    self:SetActive(false)
-                    return true
-                end
-            end
-        end
-        self:SetActive(false)
-        return false
-    end
-
-    function self:TextInput(char)
-        if not self.isActive then return false end
-
-        if self.filter == "Search..." then
-            self.filter = ""
-        end
-        
-        self.filter = self.filter .. char
-        return true
-    end
-
-    function self:KeyPress(key)
-        if not self.isActive then return false end
-        
-        if key == 8 then -- Backspace
-            if #self.filter > 0 then
-                self.filter = self.filter:sub(1, -2)
-            end
-            return true
-        elseif key == 13 then -- Enter
-            local filteredOptions = self:updateFilteredOptions()
-            if #filteredOptions > 0 then
-                self.value = filteredOptions[1]
-                if self.onChange then self.onChange(self.value) end
-                self:SetActive(false)
-            end
-            return true
-        end
-        return false
+    function self:setSelectedValue(value)
+        button.value = value
     end
 
     return subwidgets:wrap(self)
@@ -1128,10 +1173,10 @@ local function InitializeUI()
         sy = window.y + elementPadding + PADDING * 1/2 + INPUT_HEIGHT*2 + FOOTER_SIZE,
         text = 'Add',
         onClick = function()
-            hotkeyManager:SaveBinding(keySelector.value, commandSelector.selectedValue, extraSelector.value)
+            hotkeyManager:SaveBinding(keySelector.value, commandSelector:getSelectedValue(), extraSelector.value)
     
             keySelector.value = ""
-            commandSelector.value = ""
+            commandSelector:setSelectedValue(nil)
             extraSelector.value = ""
             filterTextbox.value = ""
         end
@@ -1288,7 +1333,7 @@ function widget:Initialize()
                 keySelector.options = keys
             end,
             onChangeAvailableCommands = function(commands)
-                commandSelector.options = commands
+                commandSelector:setOptions(commands)
             end
         })
         hotkeyManager:LoadHotkeyConfigs()
