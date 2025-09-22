@@ -552,6 +552,8 @@ function CommandSelector.new(options)
     self.width = 0
     self.height = 0
     self.options = options.options or {}
+    self.onFocus = options.onFocus
+    self.onBlur = options.onBlur
     self.onChange = options.onChange
     self.filter = ""
 
@@ -565,7 +567,7 @@ function CommandSelector.new(options)
         color1 = self.isActive and colors.buttonActive or colors.buttonBackground,
         text = self.placeholder,
         onClick = function()
-            self.isActive = not self.isActive
+            self:SetActive(not self.isActive)
             if self.isActive then
                 self.filter = "Search..."
             end
@@ -596,6 +598,18 @@ function CommandSelector.new(options)
             end
         end
         return filtered
+    end
+
+    function self:SetActive(isActive)
+        local isChanging = (self.isActive ~= isActive)
+        self.isActive = isActive
+        if isChanging then
+            if isActive and self.onFocus then
+                self.onFocus()
+            elseif self.onBlur then
+                self.onBlur()
+            end
+        end
     end
 
     function self:DrawScreen()
@@ -672,12 +686,12 @@ function CommandSelector.new(options)
                 ) then
                     self.value = filteredOptions[i]
                     if self.onChange then self.onChange(self.value) end
-                    self.isActive = false
+                    self:SetActive(false)
                     return true
                 end
             end
         end
-        self.isActive = false
+        self:SetActive(false)
         return false
     end
 
@@ -705,7 +719,7 @@ function CommandSelector.new(options)
             if #filteredOptions > 0 then
                 self.value = filteredOptions[1]
                 if self.onChange then self.onChange(self.value) end
-                self.isActive = false
+                self:SetActive(false)
             end
             return true
         end
@@ -728,13 +742,13 @@ function BindingList.new(options)
     self.scrollOffset = 0
     self.minScrollOffset = 0
     self.maxScrollOffset = 0
-    self.removeHover = -1
+    self.isRowHighlight = true
+    self.filterText = ""
     self.bindings = {}
     self.filteredBindings = {}
     self.deleteButtons = {}
     self.filteredDeleteButtons = {}
     self.onRemove = options.onRemove
-    self.filterText = ""
 
     local font = WG['fonts'].getFont()
 
@@ -824,7 +838,7 @@ function BindingList.new(options)
                 -- Only draw if visible
                 if yPos > -(self.height + BUTTON_HEIGHT) and yPos < BUTTON_HEIGHT then
                     -- Draw binding row highlight
-                    if math_isInRect(relMouseX, relMouseY, 0, yPos, self.width, yPos + BUTTON_HEIGHT) then
+                    if self.isRowHighlight and math_isInRect(relMouseX, relMouseY, 0, yPos, self.width, yPos + BUTTON_HEIGHT) then
                         UiElement(0, yPos, self.width, yPos + BUTTON_HEIGHT, 0,0,0,0, 0,0,0,0, 0, colors.buttonHover)
                     end
 
@@ -1071,6 +1085,12 @@ local function InitializeUI()
     commandSelector = CommandSelector.new({
         placeholder = "New Command",
         options = {},  -- Will be populated from availableCommands
+        onFocus = function()
+            bindingList.isRowHighlight = false
+        end,
+        onBlur = function()
+            bindingList.isRowHighlight = true
+        end,
     })
     commandSelector:setDimensions(
         window.x + math.floor(window.width * 1/3) + elementPadding,
