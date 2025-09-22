@@ -1,3 +1,8 @@
+--[[
+    Notable related issues:
+    - https://github.com/beyond-all-reason/Beyond-All-Reason/issues/396
+]]--
+
 ---@class Widget
 local widget = widget
 local VFS = VFS
