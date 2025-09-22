@@ -552,6 +552,21 @@ function UiDropdownInteractable.new(options)
         self:SetActive(false)
         return false
     end
+    
+    function self:MouseWheel(up, value)
+        if not self.isActive then return false end
+
+        -- TODO allow scrolling of elements
+        --[[local mouseX, mouseY = Spring.GetMouseState()
+
+        if math_isInRect(mouseX, mouseY, self.x, self.y, self.x + self.width, self.y + self.height) then
+            local newOffset = self.scrollOffset - value * 50
+            self.scrollOffset = math.max(self.minScrollOffset, math.min(self.maxScrollOffset, newOffset))
+            return true
+        end]]--
+
+        return true
+    end
 
     function self:TextInput(char)
         if not (self.isActive and self.isSearchable) then return false end
@@ -801,6 +816,7 @@ BindingList.__index = BindingList
 
 function BindingList.new(options)
     local self = setmetatable({}, BindingList)
+    self.isActive = true
     self.x = 0
     self.y = 0
     self.width = 0
@@ -808,7 +824,6 @@ function BindingList.new(options)
     self.scrollOffset = 0
     self.minScrollOffset = 0
     self.maxScrollOffset = 0
-    self.isRowHighlight = true
     self.filterText = ""
     self.bindings = {}
     self.filteredBindings = {}
@@ -905,7 +920,7 @@ function BindingList.new(options)
                 -- Only draw if visible
                 if yPos > -(self.height + BUTTON_HEIGHT) and yPos < BUTTON_HEIGHT then
                     -- Draw binding row highlight
-                    if self.isRowHighlight and math_isInRect(relMouseX, relMouseY, 0, yPos, self.width, yPos + BUTTON_HEIGHT) then
+                    if self.isActive and math_isInRect(relMouseX, relMouseY, 0, yPos, self.width, yPos + BUTTON_HEIGHT) then
                         UiElement(0, yPos, self.width, yPos + BUTTON_HEIGHT, 0,0,0,0, 0,0,0,0, 0, colors.buttonHover)
                     end
 
@@ -954,6 +969,8 @@ function BindingList.new(options)
     end
     
     function self:MouseWheel(up, value)
+        if not self.isActive then return false end
+
         local mouseX, mouseY = Spring.GetMouseState()
 
         if math_isInRect(mouseX, mouseY, self.x, self.y, self.x + self.width, self.y + self.height) then
@@ -1158,10 +1175,10 @@ local function InitializeUI()
         placeholder = "New Command",
         options = {},  -- Will be populated from availableCommands
         onFocus = function()
-            bindingList.isRowHighlight = false
+            bindingList.isActive = false
         end,
         onBlur = function()
-            bindingList.isRowHighlight = true
+            bindingList.isActive = true
         end,
     })
     commandSelector:setDimensions(
