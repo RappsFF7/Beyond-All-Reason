@@ -1212,6 +1212,11 @@ end
 
 function widget:MousePress(x, y, button)
     if not show then return false end
+
+    -- Close if clicking outside the drawn widget
+    if not math_isInRect(x, y, window.x, window.y, window.x + window.width, window.y + window.height + HEADER_SIZE + PADDING*2) then
+        widget:Toggle()
+    end
     
     -- Prevent mouse press from passing through to the game
     return true
