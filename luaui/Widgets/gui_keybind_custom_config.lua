@@ -149,16 +149,19 @@ function WidgetLifecycleRegistry.new()
             local original = component[method]
             
             component[method] = function(componentSelf, ...)
-                if not show and method ~= 'Initialize' then return false end
-
-                local result
-                if original then
-                    result = original(component, ...)
-                end
-
-                local resultDispatch = self:dispatchEvent(method, ...)
-
-                return result or resultDispatch
+                local args = {...}
+                return WidgetPCall(function()
+                    if not show and method ~= 'Initialize' then return false end
+    
+                    local result
+                    if original then
+                        result = original(component, unpack(args))
+                    end
+    
+                    local resultDispatch = self:dispatchEvent(method, unpack(args))
+    
+                    return result or resultDispatch
+                end)
             end
         end
 
