@@ -597,7 +597,8 @@ function KeySelector.new(options)
 
     local subwidgets = WidgetLifecycleRegistry.new()
 
-    self.text = options.placeholder or 'New Key'
+    self.placeholder = options.placeholder or 'New Key'
+    self.text = self.placeholder
     self.value = ''
     self.isActive = false
     self.isAppend = false
@@ -694,6 +695,11 @@ function KeySelector.new(options)
         buttonAdd.sx = x + width
         buttonAdd.sy = y + height
     end
+
+    function self:clear()
+        self.value = ''
+        self.text = self.placeholder
+    end
     
     function self:DrawScreen()
         button.text = self.text
@@ -708,8 +714,7 @@ function KeySelector.new(options)
             end
             self.text = "Press a key..."
         elseif self.text == "Press a key..." then
-            self.value = ""
-            self.text = self.placeholder or "New Key"
+            self:clear()
         end
     end
     
@@ -1183,7 +1188,7 @@ local function InitializeUI()
         onClick = function()
             hotkeyManager:SaveBinding(keySelector.value, commandSelector:getSelectedValue(), extraSelector.value)
     
-            keySelector.value = ""
+            keySelector:clear()
             commandSelector:setSelectedValue(nil)
             extraSelector.value = ""
             filterTextbox.value = ""
