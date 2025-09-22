@@ -897,7 +897,8 @@ function BindingList.new(options)
             font:End()
             
             -- Draw table
-            gl.Scissor(self.x, self.y + PADDING, self.width, self.height - HEADER_SIZE - PADDING*4)
+            local listX, listY, listX2, listY2 = self.x, self.y + PADDING, self.width, self.height - HEADER_SIZE - PADDING*4
+            gl.Scissor(listX, listY, listX2, listY2)
             for i, binding in ipairs(self.filteredBindings) do
                 local yPos = -(i * (BUTTON_HEIGHT + elementPadding)) - HEADER_SIZE - PADDING*3 + self.scrollOffset
                 
@@ -909,15 +910,20 @@ function BindingList.new(options)
                     end
 
                     -- Draw text
+                    -- TODO draw tooltip on highlighted row to show text if it overflows
                     font:Begin()
                     font:SetTextColor(1,1,1,1)
                     font:SetOutlineColor(0,0,0,0.4)
+                    gl.Scissor(listX, listY, self.width * (1/3) - elementPadding, listY2)
                     font:Print(binding.boundWith or "", elementPadding, yPos + elementPadding, FONT_SIZE, "n")
+                    gl.Scissor(listX, listY, self.width * (2/3) - elementPadding, listY2)
                     font:Print(binding.command or "", self.width * (1/3), yPos + elementPadding, FONT_SIZE, "n")
+                    gl.Scissor(listX, listY, self.width - 30 - elementPadding, listY2)
                     font:Print(binding.extra or "", self.width * (2/3), yPos + elementPadding, FONT_SIZE, "n")
                     font:End()
                     
                     -- Position and draw delete button
+                    gl.Scissor(listX, listY, listX2, listY2)
                     local deleteButton = self.filteredDeleteButtons[i]
                     if deleteButton then
                         deleteButton.tranX = self.x
