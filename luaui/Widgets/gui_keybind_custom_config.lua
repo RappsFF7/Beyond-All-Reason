@@ -861,7 +861,7 @@ function BindingList.new(options)
         self.deleteButtons = {}
         for i = 1, #self.bindings do
             local button = UiButtonInteractable.new({
-                text = "Del" .. i,
+                text = "X", --.. i,
                 color1 = colors.removeButton,
                 color2 = colors.removeButtonHover,
                 onClick = function()
@@ -922,7 +922,7 @@ function BindingList.new(options)
                     if deleteButton then
                         deleteButton.tranX = self.x
                         deleteButton.tranY = self.y + self.height
-                        deleteButton.px = self.width - 55
+                        deleteButton.px = self.width - 30
                         deleteButton.py = yPos + elementPadding
                         deleteButton.sx = self.width - 15
                         deleteButton.sy = yPos + BUTTON_HEIGHT - elementPadding
