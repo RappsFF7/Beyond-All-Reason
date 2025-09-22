@@ -399,30 +399,33 @@ function UiDropdownInteractable.new(options)
 
     self.placeholder = options.placeholder or ""
     self.isActive = false
-    self.x = 0
-    self.y = 0
-    self.width = 0
-    self.height = 0
+    self.x = options.px or 0
+    self.y = options.py or 0
+    self.width = (options.sx or 0) - self.x
+    self.height = (options.sy or 0) - self.y
+    self.tranX = options.tranX or 0
+    self.tranY = options.tranY or 0
     self.options = options.options or {}
     self.onFocus = options.onFocus
     self.onBlur = options.onBlur
     self.onChange = options.onChange
+    self.isSearchable = options.isSearchable or true
     self.filter = ""
 
     local font = WG['fonts'].getFont()
     local subwidgets = WidgetLifecycleRegistry.new()
+    
+    local filteredOptions = self.options
 
     -- UiSelector
     local button = UiButtonInteractable.new({
         tl = 1, tr = 1, bl = 1, br = 1,
         ptl = 1, ptr = 1, pbl = 1, pbr = 1,
+        tranX = self.tranX or 0, tranY = self.tranY or 0,
         color1 = self.isActive and colors.buttonActive or colors.buttonBackground,
         text = self.placeholder,
         onClick = function()
             self:SetActive(not self.isActive)
-            if self.isActive then
-                self.filter = "Search..."
-            end
         end
     })
     subwidgets:register(button)
@@ -439,7 +442,7 @@ function UiDropdownInteractable.new(options)
     end
 
     function self:updateFilteredOptions()
-        if self.filter == "" or self.filter == "Search..." then
+        if self.filter == "" then
             return self.options
         end
         
@@ -456,16 +459,21 @@ function UiDropdownInteractable.new(options)
         local isChanging = (self.isActive ~= isActive)
         self.isActive = isActive
         if isChanging then
-            if isActive and self.onFocus then
-                self.onFocus()
-            elseif self.onBlur then
-                self.onBlur()
+            if isActive then
+                if self.onFocus then self.onFocus() end
+                filteredOptions = self:updateFilteredOptions()
+            else
+                if self.onBlur then self.onBlur() end
             end
         end
     end
 
     function self:DrawScreen()
-        button.text = self.isActive and self.filter or self.value or self.placeholder
+        if self.isActive and self.isSearchable then
+            button.text = self.filter ~= "" and self.filter or 'Search...'
+        else
+            button.text = self.value or self.placeholder
+        end
 
         -- Draw dropdown indicator
         -- UiSelector
@@ -479,7 +487,6 @@ function UiDropdownInteractable.new(options)
         
         -- Draw dropdown if active
         if self.isActive then
-            local filteredOptions = self:updateFilteredOptions()
             local dropdownY = self.y + self.height
             local itemHeight = self.height - elementPadding
             local maxItems = math.min(10, #filteredOptions)
@@ -498,10 +505,10 @@ function UiDropdownInteractable.new(options)
                 local optionY = dropdownY + ((i-1) * itemHeight)
                 
                 if math_isInRect(mx, my, 
-                    self.x,
-                    optionY,
-                    self.x + self.width,
-                    optionY + itemHeight
+                    self.x + self.tranX,
+                    optionY + self.tranY,
+                    self.x + self.width + self.tranX,
+                    optionY + itemHeight + self.tranY
                 ) then
                     UiSelectHighlight(
                         self.x,
@@ -523,7 +530,6 @@ function UiDropdownInteractable.new(options)
 
     function self:MousePress(x, y)
         if self.isActive then
-            local filteredOptions = self:updateFilteredOptions()
             local dropdownY = self.y + self.height
             local itemHeight = self.height - elementPadding
             local maxItems = math.min(10, #filteredOptions)
@@ -531,10 +537,10 @@ function UiDropdownInteractable.new(options)
             for i = 1, maxItems do
                 local optionY = dropdownY + ((i-1) * itemHeight)
                 if math_isInRect(x, y,
-                    self.x,
-                    optionY,
-                    self.x + self.width,
-                    optionY + itemHeight
+                    self.x + self.tranX,
+                    optionY + self.tranY,
+                    self.x + self.width + self.tranX,
+                    optionY + itemHeight + self.tranY
                 ) then
                     self.value = filteredOptions[i]
                     if self.onChange then self.onChange(self.value) end
@@ -548,26 +554,25 @@ function UiDropdownInteractable.new(options)
     end
 
     function self:TextInput(char)
-        if not self.isActive then return false end
-
-        if self.filter == "Search..." then
-            self.filter = ""
-        end
+        if not (self.isActive and self.isSearchable) then return false end
         
         self.filter = self.filter .. char
+
+        filteredOptions = self:updateFilteredOptions()
+
         return true
     end
 
     function self:KeyPress(key)
-        if not self.isActive then return false end
+        if not (self.isActive and self.isSearchable) then return false end
         
         if key == 8 then -- Backspace
             if #self.filter > 0 then
                 self.filter = self.filter:sub(1, -2)
+                filteredOptions = self:updateFilteredOptions()
             end
             return true
         elseif key == 13 then -- Enter
-            local filteredOptions = self:updateFilteredOptions()
             if #filteredOptions > 0 then
                 self.value = filteredOptions[1]
                 if self.onChange then self.onChange(self.value) end
@@ -575,6 +580,9 @@ function UiDropdownInteractable.new(options)
             end
             return true
         end
+
+        filteredOptions = self:updateFilteredOptions()
+
         return false
     end
 
