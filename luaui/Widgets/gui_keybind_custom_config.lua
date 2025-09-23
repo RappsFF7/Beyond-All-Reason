@@ -208,8 +208,7 @@ UiButtonInteractable.__index = UiButtonInteractable
 
 --[[
     px, py, sx, sy,  tl, tr, br, bl,  ptl, ptr, pbr, pbl,  opacity, color1, color2, bgpadding, glossMult,
-    text - Displayed text,
-    tranX - Set to glTransform X, tranY - Set to glTransform Y
+    text - Displayed text
 ]]--
 function UiButtonInteractable.new(options)
     local self = setmetatable(options or {}, UiButtonInteractable)
@@ -222,8 +221,8 @@ function UiButtonInteractable.new(options)
     local function isInRect(x, y)      
         return math_isInRect(
             x, y,
-            self.px + (self.tranX or 0), self.py + (self.tranY or 0),
-            self.sx + (self.tranX or 0), self.sy + (self.tranY or 0)
+            self.px, self.py,
+            self.sx, self.sy
         )
     end
     
@@ -287,8 +286,7 @@ UiTextboxInteractable.__index = UiTextboxInteractable
 
 --[[
     px, py, sx, sy,  tl, tr, br, bl,  ptl, ptr, pbr, pbl,  opacity, color1, color2, bgpadding, glossMult,
-    text - Displayed text,
-    tranX - Set to glTransform X, tranY - Set to glTransform Y
+    text - Displayed text
 ]]--
 function UiTextboxInteractable.new(options)
     local self = setmetatable(options, UiTextboxInteractable)
@@ -306,7 +304,6 @@ function UiTextboxInteractable.new(options)
         tl = 1, tr = 1, bl = 1, br = 1,
         ptl = 1, ptr = 1, pbl = 1, pbr = 1,
         text = self.text,
-        tranX = self.tranX, tranY = self.tranY,
         onClick = function()
             self.isActive = true
             self.text = self.value
@@ -403,10 +400,11 @@ function UiScrollInteractable.new(options)
     self.y = 0
     self.width = 0
     self.height = 0
-    self.rowHeight = 0
-    self.elementCount = 0
+    self.rowHeight = options.rowHeight
+    self.elementCount = options.elementCount
     self.onDrawRow = options.onDrawRow
     self.scrollOffset = 0
+    self.scrollGutter = 10
     self.minScrollOffset = 0
     self.maxScrollOffset = 0
     
@@ -421,13 +419,11 @@ function UiScrollInteractable.new(options)
         self.scrollOffset = math.max(self.minScrollOffset, math.min(self.maxScrollOffset, self.scrollOffset))
     end
     
-    function self:setDimensions(x, y, width, height, rowHeight, elementCount)
+    function self:setDimensions(x, y, width, height)
         self.x = x
         self.y = y
         self.width = width
         self.height = height
-        self.rowHeight = rowHeight
-        self.elementCount = elementCount
         self:updateScrollBounds()
     end
     
@@ -439,8 +435,7 @@ function UiScrollInteractable.new(options)
     function self:DrawScreen()
         -- Setup scissor to clip content
         gl.PushMatrix()
-        gl.Translate(self.x, self.y + self.height, 0)
-        --gl.Scissor(self.x, self.y, self.width, self.height)
+        gl.Scissor(self.x, self.y, self.width, self.height)
         
         -- Calculate visible range
         local startRow = math.floor(self.scrollOffset / self.rowHeight)
@@ -456,13 +451,10 @@ function UiScrollInteractable.new(options)
                 if self.onDrawRow then
                     -- Call draw callback with row index and position info
                     self.onDrawRow(i + 1, {
-                        x = 0,
-                        y = yPos,
+                        x = self.x,
+                        y = self.y + self.height + yPos - self.rowHeight,
                         width = self.width,
-                        height = self.rowHeight,
-                        -- Add absolute coordinates for convenience
-                        absX = self.x,
-                        absY = self.y + self.height + yPos
+                        height = self.rowHeight
                     })
                 end
             end
@@ -470,13 +462,15 @@ function UiScrollInteractable.new(options)
         
         -- Draw scrollbar if needed
         if self.maxScrollOffset > 0 then
+            gl.Scissor(self.x, self.y, self.width + self.scrollGutter, self.height)
+
             -- Since we draw from top to bottom, the bottom y is -height
             local sliderHeight = self.height * (self.height / self.maxScrollOffset)
             WG.FlowUI.Draw.Scroller(
-                self.width - 7,
-                -self.height + (sliderHeight * 0.65),
-                self.width,
-                0,
+                self.x + self.width,
+                self.y + (sliderHeight * 0.65),
+                self.x + self.width + self.scrollGutter,
+                self.y + self.height,
                 self.maxScrollOffset,
                 self.scrollOffset
             )
@@ -502,8 +496,7 @@ end
 
 --[[
     px, py, sx, sy,  tl, tr, br, bl,  ptl, ptr, pbr, pbl,  opacity, color1, color2, bgpadding, glossMult,
-    placeholder - Displayed text when the currently selected value is empty,
-    tranX - Set to glTransform X, tranY - Set to glTransform Y
+    placeholder - Displayed text when the currently selected value is empty
 ]]--
 local UiDropdownInteractable = {}
 UiDropdownInteractable.__index = UiDropdownInteractable
@@ -517,8 +510,6 @@ function UiDropdownInteractable.new(options)
     self.y = options.py or 0
     self.width = (options.sx or 0) - self.x
     self.height = (options.sy or 0) - self.y
-    self.tranX = options.tranX or 0
-    self.tranY = options.tranY or 0
     self.options = options.options or {}
     self.onFocus = options.onFocus
     self.onBlur = options.onBlur
@@ -535,7 +526,6 @@ function UiDropdownInteractable.new(options)
     local button = UiButtonInteractable.new({
         tl = 1, tr = 1, bl = 1, br = 1,
         ptl = 1, ptr = 1, pbl = 1, pbr = 1,
-        tranX = self.tranX or 0, tranY = self.tranY or 0,
         color1 = self.isActive and colors.buttonActive or colors.buttonBackground,
         text = self.placeholder,
         onClick = function()
@@ -619,10 +609,10 @@ function UiDropdownInteractable.new(options)
                 local optionY = dropdownY + ((i-1) * itemHeight)
                 
                 if math_isInRect(mx, my, 
-                    self.x + self.tranX,
-                    optionY + self.tranY,
-                    self.x + self.width + self.tranX,
-                    optionY + itemHeight + self.tranY
+                    self.x,
+                    optionY,
+                    self.x + self.width,
+                    optionY + itemHeight
                 ) then
                     UiSelectHighlight(
                         self.x,
@@ -651,10 +641,10 @@ function UiDropdownInteractable.new(options)
             for i = 1, maxItems do
                 local optionY = dropdownY + ((i-1) * itemHeight)
                 if math_isInRect(x, y,
-                    self.x + self.tranX,
-                    optionY + self.tranY,
-                    self.x + self.width + self.tranX,
-                    optionY + itemHeight + self.tranY
+                    self.x,
+                    optionY,
+                    self.x + self.width,
+                    optionY + itemHeight
                 ) then
                     self.value = filteredOptions[i]
                     if self.onChange then self.onChange(self.value) end
@@ -935,9 +925,6 @@ function BindingList.new(options)
     self.y = 0
     self.width = 0
     self.height = 0
-    self.scrollOffset = 0
-    self.minScrollOffset = 0
-    self.maxScrollOffset = 0
     self.filterText = ""
     self.bindings = {}
     self.filteredBindings = {}
@@ -946,10 +933,56 @@ function BindingList.new(options)
     self.onRemove = options.onRemove
 
     local font = WG['fonts'].getFont()
+    local subwidgets = WidgetLifecycleRegistry.new()
 
-    local function isButtonVisible(button)
-        return button.py and button.py < 0 and button.py > -self.height
-    end
+    -- Create scroll component
+    local scroll = UiScrollInteractable.new({
+        rowHeight = BUTTON_HEIGHT + elementPadding,
+        elementCount = 0,
+        onDrawRow = function(rowIndex, pos)
+            local binding = self.filteredBindings[rowIndex]
+            if not binding then return end
+
+            -- Draw binding row highlight
+            if self.isActive and math_isInRect(mx, my, pos.x, pos.y, pos.x + pos.width, pos.y + pos.height) then
+                UiElement(pos.x, pos.y, pos.x + pos.width, pos.y + pos.height, 0,0,0,0, 0,0,0,0, 0, colors.buttonHover)
+            end
+
+            -- Draw text
+            font:Begin()
+            font:SetTextColor(1,1,1,1)
+            font:SetOutlineColor(0,0,0,0.4)
+            
+            -- TODO ui scroll relies on scissor (is there a better way? the stencil buffer is complicated), 
+            -- so we can't use it. How can we clip the text?
+
+            -- Draw boundWith
+            --gl.Scissor(pos.x, pos.y, self.width * (1/3) - elementPadding, pos.y + pos.height)
+            font:Print(binding.boundWith or "", pos.x + elementPadding, pos.y + elementPadding, FONT_SIZE, "n")
+            
+            -- Draw command
+            --gl.Scissor(pos.x, pos.y, self.width * (2/3) - elementPadding, pos.y + pos.height)
+            font:Print(binding.command or "", pos.x + self.width * (1/3), pos.y + elementPadding, FONT_SIZE, "n")
+            
+            -- Draw extra
+            --gl.Scissor(pos.x, pos.y, self.width - 30 - elementPadding, pos.y + pos.height)
+            font:Print(binding.extra or "", pos.x + self.width * (2/3), pos.y + elementPadding, FONT_SIZE, "n")
+            font:End()
+            
+            -- Position and draw delete button
+            --gl.Scissor(pos.x, pos.y, pos.width, pos.y + pos.height)
+            local deleteButton = self.filteredDeleteButtons[rowIndex]
+            if deleteButton then
+                deleteButton.px = pos.x + pos.width - 30
+                deleteButton.py = pos.y - elementPadding
+                deleteButton.sx = pos.x + pos.width - 15
+                deleteButton.sy = pos.y + pos.height - elementPadding
+                deleteButton:DrawScreen()
+            end
+            --gl.Scissor(false)
+        end
+    })
+    subwidgets:register(scroll)
 
     function self:setFilter(text)
         self.filterText = text:lower()
@@ -972,8 +1005,7 @@ function BindingList.new(options)
                 end
             end
         end
-        self.maxScrollOffset = math.max(self.minScrollOffset, (#self.filteredBindings * (BUTTON_HEIGHT + elementPadding)) + HEADER_SIZE + PADDING - self.height)
-        self.scrollOffset = math.min(self.scrollOffset, self.maxScrollOffset) -- Adjust scroll if needed
+        scroll:setElementCount(#self.filteredBindings)
     end
 
     function self:setDimensions(x, y, width, height)
@@ -981,6 +1013,7 @@ function BindingList.new(options)
         self.y = y
         self.width = width
         self.height = height
+        scroll:setDimensions(x, y + PADDING, width, height - HEADER_SIZE - 3*PADDING)
     end
 
     function self:setBindings(bindings)
@@ -990,14 +1023,14 @@ function BindingList.new(options)
         self.deleteButtons = {}
         for i = 1, #self.bindings do
             local button = UiButtonInteractable.new({
-                text = "X", --.. i,
+                text = "X" .. i,
                 color1 = colors.removeButton,
                 color2 = colors.removeButtonHover,
                 onClick = function()
+                    Spring.Echo('X' .. i)
                     if self.onRemove then
                         local binding = self.bindings[i]
                         self.onRemove(binding.boundWith, binding.command, binding.extra)
-                        self.maxScrollOffset = math.max(self.minScrollOffset, (#self.bindings * (BUTTON_HEIGHT + elementPadding)) + HEADER_SIZE + PADDING - self.height)
                     end
                 end
             })
@@ -1010,73 +1043,13 @@ function BindingList.new(options)
     function self:DrawScreen()
         gl.PushMatrix()
         WidgetPCall(function()
-            gl.Translate(self.x, self.y + self.height, 0)
-            gl.Scissor(self.x, self.y, self.width, self.height)
-
-            local mouseX, mouseY = Spring.GetMouseState()
-            local relMouseX = mouseX - self.x
-            local relMouseY = mouseY - (self.y + self.height)
-            
             -- Draw header
             font:Begin()
             font:SetTextColor(colors.textGoldBright)
-            font:Print("Keys", 0, -HEADER_SIZE - PADDING, HEADER_SIZE, "n")
-            font:Print("Command", self.width * 1/3, -HEADER_SIZE - PADDING, HEADER_SIZE, "n")
-            font:Print("Command Extras", self.width * 2/3, -HEADER_SIZE - PADDING, HEADER_SIZE, "n")
+            font:Print("Keys", self.x, self.y + self.height - HEADER_SIZE - PADDING, HEADER_SIZE, "n")
+            font:Print("Command", self.x + self.width * 1/3, self.y + self.height - HEADER_SIZE - PADDING, HEADER_SIZE, "n")
+            font:Print("Command Extras", self.x + self.width * 2/3, self.y + self.height - HEADER_SIZE - PADDING, HEADER_SIZE, "n")
             font:End()
-            
-            -- Draw table
-            local listX, listY, listX2, listY2 = self.x, self.y + PADDING, self.width, self.height - HEADER_SIZE - PADDING*4
-            gl.Scissor(listX, listY, listX2, listY2)
-            for i, binding in ipairs(self.filteredBindings) do
-                local yPos = -(i * (BUTTON_HEIGHT + elementPadding)) - HEADER_SIZE - PADDING*3 + self.scrollOffset
-                
-                -- Only draw if visible
-                if yPos > -(self.height + BUTTON_HEIGHT) and yPos < BUTTON_HEIGHT then
-                    -- Draw binding row highlight
-                    if self.isActive and math_isInRect(relMouseX, relMouseY, 0, yPos, self.width, yPos + BUTTON_HEIGHT) then
-                        UiElement(0, yPos, self.width, yPos + BUTTON_HEIGHT, 0,0,0,0, 0,0,0,0, 0, colors.buttonHover)
-                    end
-
-                    -- Draw text
-                    -- TODO draw tooltip on highlighted row to show text if it overflows
-                    font:Begin()
-                    font:SetTextColor(1,1,1,1)
-                    font:SetOutlineColor(0,0,0,0.4)
-                    gl.Scissor(listX, listY, self.width * (1/3) - elementPadding, listY2)
-                    font:Print(binding.boundWith or "", elementPadding, yPos + elementPadding, FONT_SIZE, "n")
-                    gl.Scissor(listX, listY, self.width * (2/3) - elementPadding, listY2)
-                    font:Print(binding.command or "", self.width * (1/3), yPos + elementPadding, FONT_SIZE, "n")
-                    gl.Scissor(listX, listY, self.width - 30 - elementPadding, listY2)
-                    font:Print(binding.extra or "", self.width * (2/3), yPos + elementPadding, FONT_SIZE, "n")
-                    font:End()
-                    
-                    -- Position and draw delete button
-                    gl.Scissor(listX, listY, listX2, listY2)
-                    local deleteButton = self.filteredDeleteButtons[i]
-                    if deleteButton then
-                        deleteButton.tranX = self.x
-                        deleteButton.tranY = self.y + self.height
-                        deleteButton.px = self.width - 30
-                        deleteButton.py = yPos + elementPadding
-                        deleteButton.sx = self.width - 15
-                        deleteButton.sy = yPos + BUTTON_HEIGHT - elementPadding
-                        deleteButton:DrawScreen()
-                    end
-                end
-            end
-    
-            -- Draw scrollbar
-            WG.FlowUI.Draw.Scroller(
-                self.width - 7,
-                self.height - HEADER_SIZE - PADDING - 100,
-                self.width,
-                -HEADER_SIZE - PADDING*3,
-                self.maxScrollOffset,
-                -self.scrollOffset
-            )
-            
-            gl.Scissor(false)
         end, function()
             gl.PopMatrix()
         end)
@@ -1084,32 +1057,20 @@ function BindingList.new(options)
     
     function self:MouseWheel(up, value)
         if not self.isActive then return false end
-
-        local mouseX, mouseY = Spring.GetMouseState()
-
-        if math_isInRect(mouseX, mouseY, self.x, self.y, self.x + self.width, self.y + self.height) then
-            local newOffset = self.scrollOffset - value * 50
-            self.scrollOffset = math.max(self.minScrollOffset, math.min(self.maxScrollOffset, newOffset))
-            return true
-        end
-
-        return false
+        return true
     end
     
     function self:MousePress(x, y)
         -- Check all visible buttons if they are clicked
         for _, button in ipairs(self.filteredDeleteButtons) do
-            if isButtonVisible(button) then
-                if button:MousePress(x, y, nil, true) then
-                    return true
-                end
+            if button:MousePress(x, y, nil, true) then
+                return true
             end
         end
-        
         return false
     end
 
-    return self
+    return subwidgets:wrap(self)
 end
 
 local HotkeyManager = {}
@@ -1217,7 +1178,7 @@ function HotkeyManager.new(options)
             Spring.SendCommands({"bind " .. key .. " " .. command .. " " .. extras})
             self:LoadCurrentBindings()
             self:SaveCurrentBindings()
-            log('Saved: ', self.file)
+            --log('Saved: ', self.file)
         end
     end
 
@@ -1229,7 +1190,7 @@ function HotkeyManager.new(options)
             log('Binding removed: ', key, command, extras)
             self:LoadCurrentBindings()
             self:SaveCurrentBindings()
-            log('Saved: ', self.file)
+            --log('Saved: ', self.file)
         end
     end
 
@@ -1343,7 +1304,7 @@ local function InitializeUI()
     bindingList:setDimensions(
         window.x + elementPadding + PADDING,
         window.y + INPUT_HEIGHT + FOOTER_SIZE + 4*PADDING,
-        window.width - 2*elementPadding - 2*PADDING,
+        window.width - 2*elementPadding - 2*PADDING - PADDING,
         window.height - 4*elementPadding - HEADER_SIZE - FOOTER_SIZE - 4*PADDING
     )
     widgetLifecycleRegistry:register(bindingList)
@@ -1380,6 +1341,8 @@ local function InitializeUI()
 
     widgetLifecycleRegistry:unregister(testScroll)
     testScroll = UiScrollInteractable.new({
+        rowHeight = 24,
+        elementCount = 20,
         onDrawRow = function(rowIndex, pos)
             --log('test scroll', pos)
             -- Draw a button showing the row number
@@ -1387,7 +1350,7 @@ local function InitializeUI()
                 pos.x,
                 pos.y,
                 pos.x + pos.width,
-                pos.y - pos.height,
+                pos.y + pos.height,
                 1, 1, 1, 1,
                 1, 1, 1, 1,
                 0.8,
@@ -1400,14 +1363,14 @@ local function InitializeUI()
             font:Print(
                 "Row " .. rowIndex,
                 pos.x + elementPadding,
-                pos.y - pos.height/2 - FONT_SIZE/2,
+                pos.y + pos.height/2 - FONT_SIZE/2,
                 FONT_SIZE,
                 "n"
             )
             font:End()
         end
     })
-    testScroll:setDimensions(200, 200, 100, 100, 24, 20)
+    testScroll:setDimensions(200, 200, 100, 100)
     widgetLifecycleRegistry:register(testScroll)
 end
 -- #endregion
