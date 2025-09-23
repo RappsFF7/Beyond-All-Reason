@@ -97,6 +97,7 @@ local extraSelector
 local addButton
 local filterTextbox
 local resetButton
+local testScroll
 
 local widgetLifecycleRegistry
 
@@ -384,6 +385,119 @@ function UiTextboxInteractable.new(options)
     end
 
     return subwidgets:wrap(self)
+end
+
+--[[
+    Note that items are drawn TOP to BOTTOM, which means elements should be drawn DOWN from their x,y position provided in onDrawRow.
+
+    rowHeight, elementCount, onDrawRow
+]]--
+local UiScrollInteractable = {}
+UiScrollInteractable.__index = UiScrollInteractable
+
+function UiScrollInteractable.new(options)
+    local self = setmetatable({}, UiScrollInteractable)
+    
+    -- Configuration
+    self.x = 0
+    self.y = 0
+    self.width = 0
+    self.height = 0
+    self.rowHeight = 0
+    self.elementCount = 0
+    self.onDrawRow = options.onDrawRow
+    self.scrollOffset = 0
+    self.minScrollOffset = 0
+    self.maxScrollOffset = 0
+    
+    -- Calculate how many rows are visible
+    function self:getVisibleRows()
+        return math.floor(self.height / self.rowHeight)
+    end
+    
+    function self:updateScrollBounds()
+        local totalHeight = self.elementCount * self.rowHeight
+        self.maxScrollOffset = math.max(0, totalHeight - self.height)
+        self.scrollOffset = math.max(self.minScrollOffset, math.min(self.maxScrollOffset, self.scrollOffset))
+    end
+    
+    function self:setDimensions(x, y, width, height, rowHeight, elementCount)
+        self.x = x
+        self.y = y
+        self.width = width
+        self.height = height
+        self.rowHeight = rowHeight
+        self.elementCount = elementCount
+        self:updateScrollBounds()
+    end
+    
+    function self:setElementCount(count)
+        self.elementCount = count
+        self:updateScrollBounds()
+    end
+    
+    function self:DrawScreen()
+        -- Setup scissor to clip content
+        gl.PushMatrix()
+        gl.Translate(self.x, self.y + self.height, 0)
+        --gl.Scissor(self.x, self.y, self.width, self.height)
+        
+        -- Calculate visible range
+        local startRow = math.floor(self.scrollOffset / self.rowHeight)
+        local visibleRows = self:getVisibleRows()
+        local endRow = math.min(startRow + visibleRows + 1, self.elementCount - 1)
+        
+        -- Draw visible rows
+        for i = startRow, endRow do
+            local yPos = -(i * self.rowHeight) + self.scrollOffset
+            
+            -- Only draw if row will be visible
+            if yPos > -self.height and yPos < self.rowHeight then
+                if self.onDrawRow then
+                    -- Call draw callback with row index and position info
+                    self.onDrawRow(i + 1, {
+                        x = 0,
+                        y = yPos,
+                        width = self.width,
+                        height = self.rowHeight,
+                        -- Add absolute coordinates for convenience
+                        absX = self.x,
+                        absY = self.y + self.height + yPos
+                    })
+                end
+            end
+        end
+        
+        -- Draw scrollbar if needed
+        if self.maxScrollOffset > 0 then
+            -- Since we draw from top to bottom, the bottom y is -height
+            local sliderHeight = self.height * (self.height / self.maxScrollOffset)
+            WG.FlowUI.Draw.Scroller(
+                self.width - 7,
+                -self.height + (sliderHeight * 0.65),
+                self.width,
+                0,
+                self.maxScrollOffset,
+                self.scrollOffset
+            )
+        end
+        
+        gl.Scissor(false)
+        gl.PopMatrix()
+    end
+    
+    function self:MouseWheel(up, value)
+        local mouseX, mouseY = Spring.GetMouseState()
+        
+        if math_isInRect(mouseX, mouseY, self.x, self.y, self.x + self.width, self.y + self.height) then
+            local newOffset = self.scrollOffset - value * 50
+            self.scrollOffset = math.max(self.minScrollOffset, math.min(self.maxScrollOffset, newOffset))
+            return true
+        end
+        return false
+    end
+    
+    return self
 end
 
 --[[
@@ -1263,6 +1377,38 @@ local function InitializeUI()
         end
     })
     widgetLifecycleRegistry:register(resetButton)
+
+    widgetLifecycleRegistry:unregister(testScroll)
+    testScroll = UiScrollInteractable.new({
+        onDrawRow = function(rowIndex, pos)
+            --log('test scroll', pos)
+            -- Draw a button showing the row number
+            UiButton(
+                pos.x,
+                pos.y,
+                pos.x + pos.width,
+                pos.y - pos.height,
+                1, 1, 1, 1,
+                1, 1, 1, 1,
+                0.8,
+                colors.buttonBackground
+            )
+            
+            -- Draw the row number text
+            font:Begin()
+            font:SetTextColor(colors.text)
+            font:Print(
+                "Row " .. rowIndex,
+                pos.x + elementPadding,
+                pos.y - pos.height/2 - FONT_SIZE/2,
+                FONT_SIZE,
+                "n"
+            )
+            font:End()
+        end
+    })
+    testScroll:setDimensions(200, 200, 100, 100, 24, 20)
+    widgetLifecycleRegistry:register(testScroll)
 end
 -- #endregion
 
