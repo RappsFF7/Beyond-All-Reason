@@ -395,6 +395,7 @@ function UiScrollInteractable.new(options)
     local self = setmetatable({}, UiScrollInteractable)
     
     -- Configuration
+    self.isActive = true
     self.x = 0
     self.y = 0
     self.width = 0
@@ -429,6 +430,10 @@ function UiScrollInteractable.new(options)
     function self:setElementCount(count)
         self.elementCount = count
         self:updateScrollBounds()
+    end
+    
+    function self:setActive(isActive)
+        self.isActive = isActive
     end
     
     function self:DrawScreen()
@@ -480,6 +485,8 @@ function UiScrollInteractable.new(options)
     end
     
     function self:MouseWheel(up, value)
+        if not self.isActive then return end
+
         local mouseX, mouseY = Spring.GetMouseState()
         
         if math_isInRect(mouseX, mouseY, self.x, self.y, self.x + self.width, self.y + self.height) then
@@ -504,7 +511,6 @@ function UiDropdownInteractable.new(options)
     local self = setmetatable({}, UiDropdownInteractable)
 
     self.placeholder = options.placeholder or ""
-    self.isActive = false
     self.x = options.px or 0
     self.y = options.py or 0
     self.width = (options.sx or 0) - self.x
@@ -513,6 +519,7 @@ function UiDropdownInteractable.new(options)
     self.onFocus = options.onFocus
     self.onBlur = options.onBlur
     self.onChange = options.onChange
+    self.isActive = false
     self.isSearchable = options.isSearchable or true
     self.filter = ""
 
@@ -521,11 +528,47 @@ function UiDropdownInteractable.new(options)
     
     local filteredOptions = self.options
 
-    -- UiSelector
+    -- Create scroll component for dropdown options
+    local optionRowHeight = 25
+    local optionsScroll = UiScrollInteractable.new({
+        rowHeight = optionRowHeight,
+        elementCount = 0,
+        onDrawRow = function(rowIndex, pos)
+            local option = filteredOptions[rowIndex]
+            if not option then return end
+            
+            if math_isInRect(mx, my,
+                self.x,
+                pos.x,
+                self.x + self.width,
+                pos.y + pos.height
+            ) then
+                UiSelectHighlight(
+                    pos.x,
+                    pos.y,
+                    pos.x + pos.width,
+                    pos.y + pos.height
+                )
+            end
+            
+            font:Begin()
+            font:Print(option,
+                pos.x + elementPadding,
+                pos.y + elementPadding,
+                FONT_SIZE,
+                "n"
+            )
+            font:End()
+        end
+    })
+    optionsScroll:setActive(false)
+    subwidgets:register(optionsScroll)
+
+    -- UiSelector button
     local button = UiButtonInteractable.new({
         tl = 1, tr = 1, bl = 1, br = 1,
         ptl = 1, ptr = 1, pbl = 1, pbr = 1,
-        color1 = self.isActive and colors.buttonActive or colors.buttonBackground,
+                color1 = self.isActive and colors.buttonActive or colors.buttonBackground,
         text = self.placeholder,
         onClick = function()
             self:SetActive(not self.isActive)
@@ -546,16 +589,16 @@ function UiDropdownInteractable.new(options)
 
     function self:updateFilteredOptions()
         if self.filter == "" then
-            return self.options
-        end
-        
-        local filtered = {}
-        for _, cmd in ipairs(self.options) do
-            if cmd:lower():find(self.filter:lower(), 1, true) then
-                table.insert(filtered, cmd)
+            filteredOptions = self.options
+        else
+            filteredOptions = {}
+            for _, cmd in ipairs(self.options) do
+                if cmd:lower():find(self.filter:lower(), 1, true) then
+                    table.insert(filteredOptions, cmd)
+                end
             end
         end
-        return filtered
+        optionsScroll:setElementCount(#filteredOptions)
     end
 
     function self:SetActive(isActive)
@@ -564,9 +607,12 @@ function UiDropdownInteractable.new(options)
         if isChanging then
             if isActive then
                 if self.onFocus then self.onFocus() end
-                filteredOptions = self:updateFilteredOptions()
+                self:updateFilteredOptions()
+                optionsScroll:setActive(true)
             else
                 if self.onBlur then self.onBlur() end
+                optionsScroll:setActive(false)
+                optionsScroll:setElementCount(0)
             end
         end
     end
@@ -579,7 +625,6 @@ function UiDropdownInteractable.new(options)
         end
 
         -- Draw dropdown indicator
-        -- UiSelector
         RectRound(
             self.x + self.width * 9/10,
             self.y,
@@ -591,93 +636,60 @@ function UiDropdownInteractable.new(options)
         -- Draw dropdown if active
         if self.isActive then
             local dropdownY = self.y + self.height
-            local itemHeight = self.height - elementPadding
-            local maxItems = math.min(10, #filteredOptions)
+            local dropdownHeight = math.min(self.height * 10, #filteredOptions * optionRowHeight)
         
+            -- Draw dropdown background
             RectRound(
                 self.x,
                 dropdownY,
                 self.x + self.width,
-                dropdownY + (maxItems * itemHeight),
+                dropdownY + dropdownHeight,
                 1, 2, 2, 2, 2, { 0.5, 0.5, 0.5, 0.95 }
             )
             
-            font:Begin()
-            for i = 1, maxItems do
-                local option = filteredOptions[i]
-                local optionY = dropdownY + ((i-1) * itemHeight)
-                
-                if math_isInRect(mx, my, 
-                    self.x,
-                    optionY,
-                    self.x + self.width,
-                    optionY + itemHeight
-                ) then
-                    UiSelectHighlight(
-                        self.x,
-                        optionY,
-                        self.x + self.width,
-                        optionY + itemHeight
-                    )
-                end
-                
-                font:Print(option,
-                    self.x + elementPadding * 2,
-                    optionY + elementPadding,
-                    FONT_SIZE, "n"
-                )
-            end
-            font:End()
+            -- Update scroll dimensions and draw options
+            optionsScroll:setDimensions(
+                self.x,
+                dropdownY,
+                self.width,
+                dropdownHeight
+            )
         end
     end
 
     function self:MousePress(x, y)
         if self.isActive then
             local dropdownY = self.y + self.height
-            local itemHeight = self.height - elementPadding
-            local maxItems = math.min(10, #filteredOptions)
+            local dropdownHeight = math.min(self.height * 10, #filteredOptions * optionRowHeight)
             
-            for i = 1, maxItems do
-                local optionY = dropdownY + ((i-1) * itemHeight)
-                if math_isInRect(x, y,
-                    self.x,
-                    optionY,
-                    self.x + self.width,
-                    optionY + itemHeight
-                ) then
-                    self.value = filteredOptions[i]
+            if math_isInRect(x, y,
+                self.x,
+                dropdownY,
+                self.x + self.width,
+                dropdownY + dropdownHeight
+            ) then
+                -- Find which option was clicked
+                local relativeY = dropdownHeight - (y - dropdownY) + optionsScroll.scrollOffset
+                local clickedIndex = math.floor(relativeY / optionRowHeight) + 1
+                Spring.Echo('dropdown', x, y, dropdownY, dropdownHeight, relativeY, clickedIndex)
+                
+                if clickedIndex >= 1 and clickedIndex <= #filteredOptions then
+                    self.value = filteredOptions[clickedIndex]
                     if self.onChange then self.onChange(self.value) end
                     self:SetActive(false)
-                    return true
                 end
+                return true
             end
         end
         self:SetActive(false)
         return false
-    end
-    
-    function self:MouseWheel(up, value)
-        if not self.isActive then return false end
-
-        -- TODO allow scrolling of elements
-        --[[local mouseX, mouseY = Spring.GetMouseState()
-
-        if math_isInRect(mouseX, mouseY, self.x, self.y, self.x + self.width, self.y + self.height) then
-            local newOffset = self.scrollOffset - value * 50
-            self.scrollOffset = math.max(self.minScrollOffset, math.min(self.maxScrollOffset, newOffset))
-            return true
-        end]]--
-
-        return true
     end
 
     function self:TextInput(char)
         if not (self.isActive and self.isSearchable) then return false end
         
         self.filter = self.filter .. char
-
-        filteredOptions = self:updateFilteredOptions()
-
+        self:updateFilteredOptions()
         return true
     end
 
@@ -687,7 +699,7 @@ function UiDropdownInteractable.new(options)
         if key == 8 then -- Backspace
             if #self.filter > 0 then
                 self.filter = self.filter:sub(1, -2)
-                filteredOptions = self:updateFilteredOptions()
+                self:updateFilteredOptions()
             end
             return true
         elseif key == 13 then -- Enter
@@ -698,8 +710,8 @@ function UiDropdownInteractable.new(options)
             end
             return true
         end
-
-        filteredOptions = self:updateFilteredOptions()
+        
+        self:updateFilteredOptions()
 
         return false
     end
@@ -1032,6 +1044,11 @@ function BindingList.new(options)
         scroll:setDimensions(x, y + PADDING, width, height - HEADER_SIZE - 3*PADDING)
     end
 
+    function self:setActive(isActive)
+        self.isActive = isActive
+        scroll:setActive(isActive)
+    end
+
     function self:setBindings(bindings)
         self.bindings = bindings
 
@@ -1099,6 +1116,10 @@ function HotkeyManager.new(options)
     self.availableKeys = {}
     self.availableCommands = {}
 
+    local function caseInsensitiveCompare(a, b)
+        return string.lower(a) < string.lower(b)
+    end
+
     function self:LoadDefaultConfig()
         Spring.SetConfigString("KeybindingFile", keyLayouts.keybindingLayoutFiles[1])
 
@@ -1147,7 +1168,7 @@ function HotkeyManager.new(options)
         for key in pairs(self.availableKeys) do
             table.insert(keyOptions, key)
         end
-        table.sort(keyOptions)
+        table.sort(keyOptions, caseInsensitiveCompare)
         if self.onChangeAvailableKeys then
             self.onChangeAvailableKeys(keyOptions)
         end
@@ -1156,7 +1177,7 @@ function HotkeyManager.new(options)
         for cmd in pairs(self.availableCommands) do
             table.insert(cmdOptions, cmd)
         end
-        table.sort(cmdOptions)
+        table.sort(cmdOptions, caseInsensitiveCompare)
         if self.onChangeAvailableCommands then
             self.onChangeAvailableCommands(cmdOptions)
         end
@@ -1193,7 +1214,7 @@ function HotkeyManager.new(options)
             Spring.SendCommands({"bind " .. key .. " " .. command .. " " .. extras})
             self:LoadCurrentBindings()
             self:SaveCurrentBindings()
-            --log('Saved: ', self.file)
+            log('Saved: ', self.file)
         end
     end
 
@@ -1205,7 +1226,7 @@ function HotkeyManager.new(options)
             log('Binding removed: ', key, command, extras)
             self:LoadCurrentBindings()
             self:SaveCurrentBindings()
-            --log('Saved: ', self.file)
+            log('Saved: ', self.file)
         end
     end
 
@@ -1265,10 +1286,10 @@ local function InitializeUI()
         placeholder = "New Command",
         options = {},  -- Will be populated from availableCommands
         onFocus = function()
-            bindingList.isActive = false
+            bindingList:setActive(false)
         end,
         onBlur = function()
-            bindingList.isActive = true
+            bindingList:setActive(true)
         end,
     })
     commandSelector:setDimensions(
