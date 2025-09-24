@@ -1419,8 +1419,8 @@ function widget:KeyPress(key, mods, isRepeat, label)
     end
 end
 
-function widget:Toggle()
-    show = not show
+function widget:Toggle(isShow)
+    show = isShow or not show
     if show then
         hotkeyManager:LoadCurrentBindings()
     else
@@ -1468,7 +1468,9 @@ function widget:Initialize()
         -- Register widget in global table
         WG['keybind_custom_config'] = widget
 
-        return widgetLifecycleRegistry:dispatchEvent('Initialize')
+        widgetLifecycleRegistry:dispatchEvent('Initialize')
+
+        return false
     end)
 end
 
