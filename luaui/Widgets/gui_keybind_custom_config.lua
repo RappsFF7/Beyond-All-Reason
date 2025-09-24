@@ -97,7 +97,6 @@ local extraSelector
 local addButton
 local filterTextbox
 local resetButton
-local testScroll
 
 local widgetLifecycleRegistry
 
@@ -943,8 +942,25 @@ function BindingList.new(options)
             local binding = self.filteredBindings[rowIndex]
             if not binding then return end
 
+            local isRowActive = (self.isActive and math_isInRect(mx, my, pos.x, pos.y, pos.x + pos.width, pos.y + pos.height))
+
+            -- TODO ui scroll relies on scissor (is there a better way? the stencil buffer is complicated), 
+            -- so we can't use scissor. How can we clip the text? Instead we'll just limit by size.
+
+            -- Check if text will overflow
+            local limitText = function(text, maxPosX)
+                local textRelativeEndPos = math.floor(font:GetTextWidth(utf8.sub(text, 1, pos.x)) * FONT_SIZE)
+                local isTextOverflow = textRelativeEndPos > maxPosX
+                local limitedText = (isTextOverflow and string.sub(text, 1, 15) .. '...' or text)
+                return limitedText, isTextOverflow
+            end
+            local boundWith, isBoundWithOverflow = limitText(binding.boundWith, pos.width - pos.x)
+            local command, isCommandOverflow = limitText(binding.command, pos.width - pos.x)
+            local extra, isExtraOverflow = limitText(binding.extra, pos.width - pos.x)
+            local isTextOverflow = isBoundWithOverflow or isCommandOverflow or isExtraOverflow
+
             -- Draw binding row highlight
-            if self.isActive and math_isInRect(mx, my, pos.x, pos.y, pos.x + pos.width, pos.y + pos.height) then
+            if isRowActive then
                 UiElement(pos.x, pos.y, pos.x + pos.width, pos.y + pos.height, 0,0,0,0, 0,0,0,0, 0, colors.buttonHover)
             end
 
@@ -952,25 +968,18 @@ function BindingList.new(options)
             font:Begin()
             font:SetTextColor(1,1,1,1)
             font:SetOutlineColor(0,0,0,0.4)
-            
-            -- TODO ui scroll relies on scissor (is there a better way? the stencil buffer is complicated), 
-            -- so we can't use it. How can we clip the text?
 
             -- Draw boundWith
-            --gl.Scissor(pos.x, pos.y, self.width * (1/3) - elementPadding, pos.y + pos.height)
-            font:Print(binding.boundWith or "", pos.x + elementPadding, pos.y + elementPadding, FONT_SIZE, "n")
+            font:Print(boundWith or "", pos.x + elementPadding, pos.y + elementPadding, FONT_SIZE, "n")
             
             -- Draw command
-            --gl.Scissor(pos.x, pos.y, self.width * (2/3) - elementPadding, pos.y + pos.height)
-            font:Print(binding.command or "", pos.x + self.width * (1/3), pos.y + elementPadding, FONT_SIZE, "n")
+            font:Print(command or "", pos.x + pos.width * (1/3), pos.y + elementPadding, FONT_SIZE, "n")
             
             -- Draw extra
-            --gl.Scissor(pos.x, pos.y, self.width - 30 - elementPadding, pos.y + pos.height)
-            font:Print(binding.extra or "", pos.x + self.width * (2/3), pos.y + elementPadding, FONT_SIZE, "n")
+            font:Print(extra or "", pos.x + pos.width * (2/3), pos.y + elementPadding, FONT_SIZE, "n")
             font:End()
             
             -- Position and draw delete button
-            --gl.Scissor(pos.x, pos.y, pos.width, pos.y + pos.height)
             local deleteButton = self.filteredDeleteButtons[rowIndex]
             if deleteButton then
                 deleteButton.px = pos.x + pos.width - 30
@@ -979,7 +988,14 @@ function BindingList.new(options)
                 deleteButton.sy = pos.y + pos.height - elementPadding
                 deleteButton:DrawScreen()
             end
-            --gl.Scissor(false)
+
+            if isRowActive and isTextOverflow then
+                local tooltip =
+                    'Keys: ' .. binding.boundWith .. '\n' ..
+                    'Command: ' .. binding.command .. '\n' ..
+                    'Extra: ' .. binding.extra
+                WG.tooltip.ShowTooltip('keybind_description', tooltip, pos.x + 20, pos.y, 'Keybind')
+            end
         end
     })
     subwidgets:register(scroll)
@@ -1023,11 +1039,10 @@ function BindingList.new(options)
         self.deleteButtons = {}
         for i = 1, #self.bindings do
             local button = UiButtonInteractable.new({
-                text = "X" .. i,
+                text = "X",
                 color1 = colors.removeButton,
                 color2 = colors.removeButtonHover,
                 onClick = function()
-                    Spring.Echo('X' .. i)
                     if self.onRemove then
                         local binding = self.bindings[i]
                         self.onRemove(binding.boundWith, binding.command, binding.extra)
@@ -1338,40 +1353,6 @@ local function InitializeUI()
         end
     })
     widgetLifecycleRegistry:register(resetButton)
-
-    widgetLifecycleRegistry:unregister(testScroll)
-    testScroll = UiScrollInteractable.new({
-        rowHeight = 24,
-        elementCount = 20,
-        onDrawRow = function(rowIndex, pos)
-            --log('test scroll', pos)
-            -- Draw a button showing the row number
-            UiButton(
-                pos.x,
-                pos.y,
-                pos.x + pos.width,
-                pos.y + pos.height,
-                1, 1, 1, 1,
-                1, 1, 1, 1,
-                0.8,
-                colors.buttonBackground
-            )
-            
-            -- Draw the row number text
-            font:Begin()
-            font:SetTextColor(colors.text)
-            font:Print(
-                "Row " .. rowIndex,
-                pos.x + elementPadding,
-                pos.y + pos.height/2 - FONT_SIZE/2,
-                FONT_SIZE,
-                "n"
-            )
-            font:End()
-        end
-    })
-    testScroll:setDimensions(200, 200, 100, 100)
-    widgetLifecycleRegistry:register(testScroll)
 end
 -- #endregion
 
