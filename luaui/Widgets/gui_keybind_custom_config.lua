@@ -314,6 +314,14 @@ function UiTextboxInteractable.new(options)
     })
     subwidgets:register(button)
 
+    function self:SetValue(value)
+        self.value = value
+        self.text = value
+        if self.placeholder and self.value == '' then
+            self.text = self.placeholder
+        end
+    end
+
     function self:DrawScreen()
         button.text = self.text
 
@@ -671,7 +679,6 @@ function UiDropdownInteractable.new(options)
                 -- Find which option was clicked
                 local relativeY = dropdownHeight - (y - dropdownY) + optionsScroll.scrollOffset
                 local clickedIndex = math.floor(relativeY / optionRowHeight) + 1
-                Spring.Echo('dropdown', x, y, dropdownY, dropdownHeight, relativeY, clickedIndex)
                 
                 if clickedIndex >= 1 and clickedIndex <= #filteredOptions then
                     self.value = filteredOptions[clickedIndex]
@@ -1324,7 +1331,7 @@ local function InitializeUI()
     
             keySelector:clear()
             commandSelector:setSelectedValue(nil)
-            extraSelector.value = ""
+            extraSelector:SetValue("")
         end
     })
     widgetLifecycleRegistry:register(addButton)
