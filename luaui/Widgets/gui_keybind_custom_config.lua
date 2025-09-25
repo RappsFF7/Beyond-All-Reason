@@ -1325,7 +1325,6 @@ local function InitializeUI()
             keySelector:clear()
             commandSelector:setSelectedValue(nil)
             extraSelector.value = ""
-            filterTextbox.value = ""
         end
     })
     widgetLifecycleRegistry:register(addButton)
