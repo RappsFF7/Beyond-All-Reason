@@ -1219,9 +1219,10 @@ function HotkeyManager.new(options)
     function self:SaveBinding(key, command, extras)
         if key and command and key ~= "" and command ~= "" then
             Spring.SendCommands({"bind " .. key .. " " .. command .. " " .. extras})
+            log('Binding added: ' .. key, command, extras)
             self:LoadCurrentBindings()
             self:SaveCurrentBindings()
-            log('Saved: ', self.file)
+            log('Saved: ' .. self.file)
         end
     end
 
@@ -1230,10 +1231,10 @@ function HotkeyManager.new(options)
             -- TODO this fails on sequenced bindings (like sc_a,sc_a command). Is this a bug in Spring?
             -- TODO this deletes all entries for key/command, unbind doesn't understand extras (bug reported in GitHub)
             Spring.SendCommands({"unbind " .. key .. " " .. command})
-            log('Binding removed: ', key, command, extras)
+            log('Binding removed: ' .. key, command, extras)
             self:LoadCurrentBindings()
             self:SaveCurrentBindings()
-            log('Saved: ', self.file)
+            log('Saved: ' .. self.file)
         end
     end
 
